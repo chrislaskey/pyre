@@ -71,8 +71,6 @@ defmodule Pyre.Agents.Runner do
         Enum.join(config.allowed_tools, ","),
         "--model",
         config.model,
-        "--output-format",
-        "text",
         "--permission-mode",
         config.permission_mode,
         "--add-dir",

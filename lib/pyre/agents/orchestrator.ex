@@ -248,7 +248,9 @@ defmodule Pyre.Agents.Orchestrator do
   end
 
   defp execute_stage(stage, feature_description, run_dir, working_dir, runner, fast?, dry_run?, verbose?) do
-    Mix.shell().info("\n--- Stage: #{stage.name} ---")
+    started_at = System.monotonic_time(:second)
+    timestamp = Calendar.strftime(NaiveDateTime.local_now(), "%H:%M:%S")
+    Mix.shell().info("\n--- Stage: #{stage.name} [#{timestamp}] ---")
 
     model = if fast?, do: "haiku", else: stage.model
     artifact_filename = stage.writes <> ".md"
@@ -278,34 +280,52 @@ defmodule Pyre.Agents.Orchestrator do
       permission_mode: stage.permission_mode
     }
 
-    if dry_run? do
-      {cmd, args} = Runner.build_command(config)
-      Mix.shell().info("[dry-run] #{cmd} #{Enum.join(args, " ")}")
-      :ok
-    else
-      if verbose? do
+    result =
+      if dry_run? do
         {cmd, args} = Runner.build_command(config)
-        Mix.shell().info("[verbose] working_dir: #{working_dir}")
-        Mix.shell().info("[verbose] run_dir:     #{run_dir}")
-        Mix.shell().info("[verbose] model:       #{model}")
-        Mix.shell().info("[verbose] permission:  #{stage.permission_mode}")
-        Mix.shell().info("[verbose] cmd: #{cmd} #{Enum.join(args, " ")}")
+        Mix.shell().info("[dry-run] #{cmd} #{Enum.join(args, " ")}")
+        :ok
+      else
+        if verbose? do
+          {cmd, args} = Runner.build_command(config)
+          Mix.shell().info("[verbose] working_dir: #{working_dir}")
+          Mix.shell().info("[verbose] run_dir:     #{run_dir}")
+          Mix.shell().info("[verbose] model:       #{model}")
+          Mix.shell().info("[verbose] permission:  #{stage.permission_mode}")
+          Mix.shell().info("[verbose] cmd: #{cmd} #{Enum.join(args, " ")}")
+        end
+
+        case runner.(config) do
+          {:ok, 0} ->
+            if verbose?, do: Mix.shell().info("[verbose] exit: 0 (ok)")
+            :ok
+
+          {:ok, code} ->
+            if verbose?, do: Mix.shell().info("[verbose] exit: #{code} (error)")
+            {:error, {:nonzero_exit, stage.name, code}}
+
+          {:error, reason} ->
+            if verbose?, do: Mix.shell().info("[verbose] error: #{inspect(reason)}")
+            {:error, {stage.name, reason}}
+        end
       end
 
-      case runner.(config) do
-        {:ok, 0} ->
-          if verbose?, do: Mix.shell().info("[verbose] exit: 0 (ok)")
-          :ok
+    elapsed = System.monotonic_time(:second) - started_at
 
-        {:ok, code} ->
-          if verbose?, do: Mix.shell().info("[verbose] exit: #{code} (error)")
-          {:error, {:nonzero_exit, stage.name, code}}
-
-        {:error, reason} ->
-          if verbose?, do: Mix.shell().info("[verbose] error: #{inspect(reason)}")
-          {:error, {stage.name, reason}}
-      end
+    case result do
+      :ok -> Mix.shell().info("--- Completed: #{stage.name} (#{format_duration(elapsed)}) ---")
+      _ -> Mix.shell().info("--- Failed: #{stage.name} (#{format_duration(elapsed)}) ---")
     end
+
+    result
+  end
+
+  defp format_duration(seconds) when seconds < 60, do: "#{seconds}s"
+
+  defp format_duration(seconds) do
+    minutes = div(seconds, 60)
+    remaining = rem(seconds, 60)
+    "#{minutes}m #{remaining}s"
   end
 
   @doc false
