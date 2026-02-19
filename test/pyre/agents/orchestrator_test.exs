@@ -230,9 +230,9 @@ defmodule Pyre.Agents.OrchestratorTest do
 
   # Helper to run orchestrator with correct runs directory context
   defp with_project_context(tmp_dir, fun) do
-    # The orchestrator uses Path.expand("agents/runs") which is relative to CWD
-    # We need to create the agents/runs directory structure
-    runs_dir = Path.join(tmp_dir, "agents/runs")
+    # The orchestrator uses Path.expand("priv/pyre/runs", File.cwd!())
+    # We need to create the priv/pyre/runs directory structure
+    runs_dir = Path.join(tmp_dir, "priv/pyre/runs")
     File.mkdir_p!(runs_dir)
 
     # Temporarily change directory so Path.expand resolves correctly

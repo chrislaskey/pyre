@@ -13,11 +13,11 @@ defmodule Mix.Tasks.Pyre.Run do
 
     * `--fast` — Use the fastest (haiku) model for all agents
     * `--dry-run` — Print commands without executing them
-    * `--project-dir` — Working directory for the agents (default: `example`)
+    * `--project-dir` — Working directory for the agents (default: `.`)
 
   ## Output
 
-  Artifacts are written to `agents/runs/<timestamp>/`:
+  Artifacts are written to `priv/pyre/runs/<timestamp>/`:
     - `00_feature.md` — Original feature request
     - `01_requirements.md` — Product Manager output
     - `02_design_spec.md` — Designer output
@@ -52,7 +52,7 @@ defmodule Mix.Tasks.Pyre.Run do
     orchestrator_opts = [
       fast: Keyword.get(opts, :fast, false),
       dry_run: Keyword.get(opts, :dry_run, false),
-      project_dir: Keyword.get(opts, :project_dir, "example")
+      project_dir: Keyword.get(opts, :project_dir, ".")
     ]
 
     case Pyre.Agents.Orchestrator.run(feature_description, orchestrator_opts) do

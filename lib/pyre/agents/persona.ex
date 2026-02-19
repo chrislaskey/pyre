@@ -3,18 +3,29 @@ defmodule Pyre.Agents.Persona do
   Loads persona `.md` files and builds prompts for agent stages.
   """
 
-  @personas_dir Path.expand("../../../priv/pyre/personas", __DIR__)
-
   @doc """
   Loads a persona Markdown file by name.
 
   The name should be an atom matching the filename without extension
-  (e.g., `:product_manager` loads `agents/personas/product_manager.md`).
+  (e.g., `:product_manager` loads `product_manager.md`).
+
+  Looks first in the consuming project's `priv/pyre/personas/` directory,
+  then falls back to the library's built-in personas.
   """
   @spec load(atom()) :: {:ok, String.t()} | {:error, term()}
   def load(persona_name) do
-    path = Path.join(@personas_dir, "#{persona_name}.md")
+    path = Path.join(personas_dir(), "#{persona_name}.md")
     File.read(path)
+  end
+
+  defp personas_dir do
+    project_dir = Path.join(File.cwd!(), "priv/pyre/personas")
+
+    if File.dir?(project_dir) do
+      project_dir
+    else
+      Application.app_dir(:pyre, "priv/pyre/personas")
+    end
   end
 
   @doc """

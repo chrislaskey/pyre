@@ -1,28 +1,53 @@
 defmodule Pyre.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/chrislaskey/pyre"
+
   def project do
     [
       app: :pyre,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      description: description(),
+      package: package(),
+      docs: docs(),
+      source_url: @source_url
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger]
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
+  defp description do
+    "Multi-agent LLM framework for rapid Phoenix development."
+  end
+
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => @source_url},
+      files: ~w(lib priv/pyre/personas .formatter.exs mix.exs README.md LICENSE)
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md"],
+      source_ref: "v#{@version}"
+    ]
+  end
+
   defp deps do
     [
       {:inflex, "~> 2.1"},
-      {:igniter, "~> 0.7", only: [:dev, :test]}
+      {:igniter, "~> 0.7"}
     ]
   end
 end

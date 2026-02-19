@@ -94,17 +94,17 @@ defmodule Pyre.Agents.Orchestrator do
     Defaults to `&Runner.run/1`. Inject a mock for testing.
   - `:fast` — When `true`, overrides all models to `"haiku"`. Default `false`.
   - `:dry_run` — When `true`, prints commands without executing. Default `false`.
-  - `:project_dir` — Working directory for the claude CLI. Default `"example"`.
+  - `:project_dir` — Working directory for the claude CLI. Default `"."`.
   """
   @spec run(String.t(), keyword()) :: :ok | {:error, term()}
   def run(feature_description, opts \\ []) do
     runner = Keyword.get(opts, :runner, &Runner.run/1)
     fast? = Keyword.get(opts, :fast, false)
     dry_run? = Keyword.get(opts, :dry_run, false)
-    project_dir = Keyword.get(opts, :project_dir, "example")
+    project_dir = Keyword.get(opts, :project_dir, ".")
     working_dir = Path.expand(project_dir)
 
-    runs_dir = Path.expand("priv/pyre/runs")
+    runs_dir = Path.expand("priv/pyre/runs", File.cwd!())
 
     with {:ok, run_dir} <- Artifact.create_run_dir(runs_dir),
          :ok <- Artifact.write(run_dir, "00_feature", feature_description) do
