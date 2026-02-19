@@ -25,9 +25,14 @@ defmodule Pyre.Agents.Runner do
   def run(config) do
     {_cmd, args} = build_command(config)
 
+    # Run via sh with stdin from /dev/null so the claude process receives EOF
+    # immediately on stdin, preventing hangs when it tries to read interactively
+    # (e.g. update nags, first-run prompts).
+    shell_cmd = shell_join(["claude" | args]) <> " </dev/null"
+
     try do
       {_output, exit_code} =
-        System.cmd("claude", args,
+        System.cmd("/bin/sh", ["-c", shell_cmd],
           cd: config.working_dir,
           into: IO.stream(:stdio, :line),
           stderr_to_stdout: true,
@@ -38,6 +43,15 @@ defmodule Pyre.Agents.Runner do
     rescue
       e in ErlangError -> {:error, e.original}
     end
+  end
+
+  # Builds a POSIX shell command string with every argument single-quoted.
+  # Single-quoting handles spaces, newlines, backticks, and all special chars.
+  # Internal single quotes are escaped as '\''.
+  defp shell_join(args) do
+    Enum.map_join(args, " ", fn arg ->
+      "'" <> String.replace(arg, "'", "'\\''") <> "'"
+    end)
   end
 
   @doc """
@@ -57,6 +71,8 @@ defmodule Pyre.Agents.Runner do
         Enum.join(config.allowed_tools, ","),
         "--model",
         config.model,
+        "--output-format",
+        "text",
         "--permission-mode",
         config.permission_mode,
         "--add-dir",
