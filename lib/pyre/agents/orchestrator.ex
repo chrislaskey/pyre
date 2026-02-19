@@ -94,6 +94,7 @@ defmodule Pyre.Agents.Orchestrator do
     Defaults to `&Runner.run/1`. Inject a mock for testing.
   - `:fast` — When `true`, overrides all models to `"haiku"`. Default `false`.
   - `:dry_run` — When `true`, prints commands without executing. Default `false`.
+  - `:verbose` — When `true`, prints each command before running and reports exit codes. Default `false`.
   - `:project_dir` — Working directory for the claude CLI. Default `"."`.
   """
   @spec run(String.t(), keyword()) :: :ok | {:error, term()}
@@ -101,6 +102,7 @@ defmodule Pyre.Agents.Orchestrator do
     runner = Keyword.get(opts, :runner, &Runner.run/1)
     fast? = Keyword.get(opts, :fast, false)
     dry_run? = Keyword.get(opts, :dry_run, false)
+    verbose? = Keyword.get(opts, :verbose, false)
     project_dir = Keyword.get(opts, :project_dir, ".")
     working_dir = Path.expand(project_dir)
 
@@ -121,7 +123,8 @@ defmodule Pyre.Agents.Orchestrator do
                working_dir,
                runner,
                fast?,
-               dry_run?
+               dry_run?,
+               verbose?
              ),
            :ok <-
              execute_stage(
@@ -131,21 +134,22 @@ defmodule Pyre.Agents.Orchestrator do
                working_dir,
                runner,
                fast?,
-               dry_run?
+               dry_run?,
+               verbose?
              ) do
         # Enter review loop
-        review_loop(feature_description, run_dir, working_dir, runner, fast?, dry_run?, 1)
+        review_loop(feature_description, run_dir, working_dir, runner, fast?, dry_run?, verbose?, 1)
       end
     end
   end
 
-  defp review_loop(_feature, _run_dir, _working_dir, _runner, _fast?, _dry_run?, cycle)
+  defp review_loop(_feature, _run_dir, _working_dir, _runner, _fast?, _dry_run?, _verbose?, cycle)
        when cycle > @max_review_cycles do
     Mix.shell().info("Max review cycles (#{@max_review_cycles}) reached. Stopping.")
     :ok
   end
 
-  defp review_loop(feature_description, run_dir, working_dir, runner, fast?, dry_run?, cycle) do
+  defp review_loop(feature_description, run_dir, working_dir, runner, fast?, dry_run?, verbose?, cycle) do
     [_, _, programmer_stage, test_writer_stage, reviewer_stage] = @stages
 
     # Build versioned stages for this cycle
@@ -189,7 +193,8 @@ defmodule Pyre.Agents.Orchestrator do
              working_dir,
              runner,
              fast?,
-             dry_run?
+             dry_run?,
+             verbose?
            ),
          :ok <-
            execute_stage(
@@ -199,7 +204,8 @@ defmodule Pyre.Agents.Orchestrator do
              working_dir,
              runner,
              fast?,
-             dry_run?
+             dry_run?,
+             verbose?
            ),
          :ok <-
            execute_stage(
@@ -209,7 +215,8 @@ defmodule Pyre.Agents.Orchestrator do
              working_dir,
              runner,
              fast?,
-             dry_run?
+             dry_run?,
+             verbose?
            ) do
       # Check verdict
       verdict_file = Artifact.versioned_name("05_review_verdict", cycle)
@@ -229,6 +236,7 @@ defmodule Pyre.Agents.Orchestrator do
             runner,
             fast?,
             dry_run?,
+            verbose?,
             cycle + 1
           )
       end
@@ -239,7 +247,7 @@ defmodule Pyre.Agents.Orchestrator do
     %{stage | writes: Artifact.versioned_name(stage.writes, cycle)}
   end
 
-  defp execute_stage(stage, feature_description, run_dir, working_dir, runner, fast?, dry_run?) do
+  defp execute_stage(stage, feature_description, run_dir, working_dir, runner, fast?, dry_run?, verbose?) do
     Mix.shell().info("\n--- Stage: #{stage.name} ---")
 
     model = if fast?, do: "haiku", else: stage.model
@@ -275,10 +283,27 @@ defmodule Pyre.Agents.Orchestrator do
       Mix.shell().info("[dry-run] #{cmd} #{Enum.join(args, " ")}")
       :ok
     else
+      if verbose? do
+        {cmd, args} = Runner.build_command(config)
+        Mix.shell().info("[verbose] working_dir: #{working_dir}")
+        Mix.shell().info("[verbose] run_dir:     #{run_dir}")
+        Mix.shell().info("[verbose] model:       #{model}")
+        Mix.shell().info("[verbose] permission:  #{stage.permission_mode}")
+        Mix.shell().info("[verbose] cmd: #{cmd} #{Enum.join(args, " ")}")
+      end
+
       case runner.(config) do
-        {:ok, 0} -> :ok
-        {:ok, code} -> {:error, {:nonzero_exit, stage.name, code}}
-        {:error, reason} -> {:error, {stage.name, reason}}
+        {:ok, 0} ->
+          if verbose?, do: Mix.shell().info("[verbose] exit: 0 (ok)")
+          :ok
+
+        {:ok, code} ->
+          if verbose?, do: Mix.shell().info("[verbose] exit: #{code} (error)")
+          {:error, {:nonzero_exit, stage.name, code}}
+
+        {:error, reason} ->
+          if verbose?, do: Mix.shell().info("[verbose] error: #{inspect(reason)}")
+          {:error, {stage.name, reason}}
       end
     end
   end

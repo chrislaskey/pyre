@@ -13,6 +13,7 @@ defmodule Mix.Tasks.Pyre.Run do
 
     * `--fast` — Use the fastest (haiku) model for all agents
     * `--dry-run` — Print commands without executing them
+    * `--verbose` — Print each command before running it and report exit codes
     * `--project-dir` — Working directory for the agents (default: `.`)
 
   ## Output
@@ -29,8 +30,8 @@ defmodule Mix.Tasks.Pyre.Run do
 
   use Mix.Task
 
-  @switches [fast: :boolean, dry_run: :boolean, project_dir: :string]
-  @aliases [f: :fast, d: :dry_run, p: :project_dir]
+  @switches [fast: :boolean, dry_run: :boolean, verbose: :boolean, project_dir: :string]
+  @aliases [f: :fast, d: :dry_run, v: :verbose, p: :project_dir]
 
   @impl Mix.Task
   def run(argv) do
@@ -52,6 +53,7 @@ defmodule Mix.Tasks.Pyre.Run do
     orchestrator_opts = [
       fast: Keyword.get(opts, :fast, false),
       dry_run: Keyword.get(opts, :dry_run, false),
+      verbose: Keyword.get(opts, :verbose, false),
       project_dir: Keyword.get(opts, :project_dir, ".")
     ]
 
