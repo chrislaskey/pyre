@@ -24,3 +24,7 @@ pyre-*.tar
 
 # LLM configs
 .claude/settings.local.json
+
+# Agent run output
+/priv/pyre/runs/*
+!/priv/pyre/runs/.gitkeep

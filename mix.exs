@@ -22,7 +22,7 @@ defmodule Pyre.MixProject do
   defp deps do
     [
       {:inflex, "~> 2.1"},
-      {:igniter, "~> 0.7", only: [:dev]}
+      {:igniter, "~> 0.7", only: [:dev, :test]}
     ]
   end
 end
