@@ -21,6 +21,7 @@ defmodule Pyre.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:inflex, "~> 2.1"},
       {:igniter, "~> 0.7", only: [:dev]}
     ]
   end
