@@ -114,24 +114,24 @@ defmodule Mix.Tasks.Framework.Gen.Live do
   defp generate_index(app_web_name, page_name) do
     content =
       template_path()
-      |> Path.join("live/index.ex")
+      |> Path.join("live/index.ex.example")
       |> File.read!()
       |> replace_placeholders(app_web_name, page_name)
       |> restore_reserved(app_web_name, page_name)
 
-    path = output_path(app_web_name, page_name, "index.ex")
+    path = output_path(app_web_name, page_name, "index.ex.example")
     write_file(path, content)
   end
 
   defp generate_index_context(app_web_name, page_name) do
     content =
       template_path()
-      |> Path.join("live/index_context.ex")
+      |> Path.join("live/index_context.ex.example")
       |> File.read!()
       |> replace_placeholders(app_web_name, page_name)
       |> restore_reserved(app_web_name, page_name)
 
-    path = output_path(app_web_name, page_name, "index_context.ex")
+    path = output_path(app_web_name, page_name, "index_context.ex.example")
     write_file(path, content)
   end
 
@@ -160,7 +160,7 @@ defmodule Mix.Tasks.Framework.Gen.Live do
     |> String.replace(~s("page"), ~s("#{topic_name}"))
   end
 
-  defp restore_reserved(content, app_web_name, page_name) do
+  defp restore_reserved(content, app_web_name, _page_name) do
     content
     |> String.replace("#{app_web_name}.Repo", "Framework.Repo")
     |> String.replace("#{app_web_name}.PubSub", "Framework.PubSub")

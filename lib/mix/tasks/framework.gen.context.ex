@@ -51,7 +51,7 @@ defmodule Mix.Tasks.Framework.Gen.Context do
 
   defp generate_context(app_name, context_name, schema_name) do
     template_path()
-    |> Path.join("context.ex")
+    |> Path.join("context.ex.example")
     |> File.read!()
     |> String.replace("Framework", app_name)
     |> String.replace("Context", context_name)
@@ -61,7 +61,7 @@ defmodule Mix.Tasks.Framework.Gen.Context do
 
   defp generate_schema(app_name, context_name, schema_name) do
     template_path()
-    |> Path.join("schema.ex")
+    |> Path.join("schema.ex.example")
     |> File.read!()
     |> String.replace("Framework", app_name)
     |> String.replace("Context", context_name)
