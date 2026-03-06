@@ -130,8 +130,7 @@ defmodule Pyre.Tools.AgenticLoop do
 
     # The response.context already includes the assistant message with tool calls.
     # Execute tools and append results to get the updated context.
-    updated_context =
-      ReqLLM.Context.execute_and_append_tools(response.context, tool_calls, tools)
+    updated_context = execute_tools(response.context, tool_calls, tools)
 
     loop(
       llm_module,
@@ -146,6 +145,50 @@ defmodule Pyre.Tools.AgenticLoop do
       receive_timeout,
       accumulated <> text
     )
+  end
+
+  # Wraps ReqLLM.Context.execute_and_append_tools/3 to handle error structs
+  # that don't implement String.Chars (e.g. ReqLLM.Error.Validation.Error).
+  defp execute_tools(context, tool_calls, tools) do
+    Enum.reduce(tool_calls, context, fn tool_call, ctx ->
+      name = extract_tool_name(tool_call)
+      id = extract_tool_id(tool_call)
+
+      result =
+        case find_and_execute(name, tool_call, tools) do
+          {:ok, value} -> value
+          {:error, error} -> "Error: #{format_tool_error(error)}"
+        end
+
+      ReqLLM.Context.append(ctx, ReqLLM.Context.tool_result(id, result))
+    end)
+  end
+
+  defp find_and_execute(name, tool_call, tools) do
+    case Enum.find(tools, fn t -> t.name == name end) do
+      nil -> {:error, "Tool #{name} not found"}
+      tool -> ReqLLM.Tool.execute(tool, extract_tool_args(tool_call))
+    end
+  end
+
+  defp extract_tool_name(%ReqLLM.ToolCall{function: %{name: name}}), do: name
+  defp extract_tool_name(%{name: name}), do: name
+
+  defp extract_tool_id(%ReqLLM.ToolCall{id: id}), do: id
+  defp extract_tool_id(%{id: id}), do: id
+
+  defp extract_tool_args(%ReqLLM.ToolCall{function: %{arguments: args}}) when is_binary(args),
+    do: Jason.decode!(args)
+
+  defp extract_tool_args(%ReqLLM.ToolCall{function: %{arguments: args}}), do: args
+  defp extract_tool_args(%{arguments: args}) when is_binary(args), do: Jason.decode!(args)
+  defp extract_tool_args(%{arguments: args}), do: args
+
+  defp format_tool_error(error) when is_binary(error), do: error
+  defp format_tool_error(%{reason: reason}) when is_binary(reason), do: reason
+
+  defp format_tool_error(error) do
+    if is_exception(error), do: Exception.message(error), else: inspect(error)
   end
 
   defp log_tool_calls(tool_calls, iteration) do
