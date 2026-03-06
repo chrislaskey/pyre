@@ -50,10 +50,7 @@ defmodule Pyre.MixProject do
       {:inflex, "~> 2.1"},
       {:igniter, "~> 0.7"},
       {:jido, "~> 2.0"},
-      {:jido_ai, "~> 2.0.0-rc.0"},
-      # Override: timex (via jido -> sched_ex) pins gettext ~> 0.26 which
-      # conflicts with Phoenix 1.8+ requiring gettext ~> 1.0.
-      {:gettext, ">= 0.26.0", override: true}
+      {:jido_ai, "~> 2.0.0-rc.0"}
     ]
   end
 end
