@@ -61,6 +61,7 @@ You have the following tools to inspect the project (read-only — you cannot mo
 - [ ] Form validation (success and error paths) tested
 - [ ] Edge cases covered (empty states, not found)
 - [ ] Tests use element selectors, not raw HTML matching
+- [ ] All new test cases must pass
 
 ## Output Format
 

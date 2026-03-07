@@ -1,6 +1,20 @@
 defmodule Pyre.Tools do
   @max_output_bytes 10_000
-  @default_allowed_commands ~w(mix elixir cat ls grep find head tail wc mkdir)
+
+  @default_allowed_commands [
+    "MIX_ENV=test mix",
+    "mix",
+    "elixir",
+    "git",
+    "cat",
+    "ls",
+    "grep",
+    "find",
+    "head",
+    "tail",
+    "wc",
+    "mkdir"
+  ]
 
   @moduledoc """
   Tool definitions for LLM agent actions.
