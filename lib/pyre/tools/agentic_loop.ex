@@ -32,144 +32,126 @@ defmodule Pyre.Tools.AgenticLoop do
     verbose? = Keyword.get(opts, :verbose, false)
     receive_timeout = Keyword.get(opts, :receive_timeout, @default_receive_timeout)
 
-    loop(llm_module, model, messages, tools, 0, max_iter, streaming?, output_fn, verbose?, receive_timeout, "")
+    config = %{
+      max_iter: max_iter,
+      streaming: streaming?,
+      output_fn: output_fn,
+      verbose: verbose?,
+      receive_timeout: receive_timeout
+    }
+
+    loop(llm_module, model, messages, tools, 0, config, "")
   end
 
-  defp loop(
-         _llm,
-         _model,
-         _messages,
-         _tools,
-         iteration,
-         max_iter,
-         _streaming?,
-         _output_fn,
-         _verbose?,
-         _receive_timeout,
-         accumulated
-       )
+  defp loop(_llm, _model, _messages, _tools, iteration, %{max_iter: max_iter}, accumulated)
        when iteration >= max_iter do
     {:ok, accumulated <> "\n\n(Reached maximum tool-use iterations)"}
   end
 
-  defp loop(
-         llm_module,
-         model,
-         messages,
-         tools,
-         iteration,
-         max_iter,
-         streaming?,
-         output_fn,
-         verbose?,
-         receive_timeout,
-         accumulated
-       ) do
+  defp loop(llm_module, model, messages, tools, iteration, config, accumulated) do
     chat_opts = [
-      streaming: streaming?,
-      output_fn: output_fn,
-      receive_timeout: receive_timeout
+      streaming: config.streaming,
+      output_fn: config.output_fn,
+      receive_timeout: config.receive_timeout
     ]
 
     case llm_module.chat(model, messages, tools, chat_opts) do
       {:ok, response} ->
         classified = ReqLLM.Response.classify(response)
 
-        handle_classified(
-          classified,
-          response,
-          llm_module,
-          model,
-          tools,
-          iteration,
-          max_iter,
-          streaming?,
-          output_fn,
-          verbose?,
-          receive_timeout,
-          accumulated
-        )
+        handle_classified(classified, response, llm_module, model, tools, iteration, config, accumulated)
 
       {:error, _} = error ->
         error
     end
   end
 
-  defp handle_classified(
-         %{type: :final_answer, text: text},
-         _response,
-         _llm,
-         _model,
-         _tools,
-         _iteration,
-         _max_iter,
-         _streaming?,
-         _output_fn,
-         _verbose?,
-         _receive_timeout,
-         accumulated
-       ) do
+  defp handle_classified(%{type: :final_answer, text: text}, _response, _llm, _model, _tools, _iteration, _config, accumulated) do
     {:ok, accumulated <> text}
   end
 
-  defp handle_classified(
-         %{type: :tool_calls, text: text, tool_calls: tool_calls},
-         response,
-         llm_module,
-         model,
-         tools,
-         iteration,
-         max_iter,
-         streaming?,
-         output_fn,
-         verbose?,
-         receive_timeout,
-         accumulated
-       ) do
-    if verbose?, do: log_tool_calls(tool_calls, iteration)
+  defp handle_classified(%{type: :tool_calls, text: text, tool_calls: tool_calls}, response, llm_module, model, tools, iteration, config, accumulated) do
+    log_tool_calls(tool_calls, iteration, config.verbose)
 
-    # The response.context already includes the assistant message with tool calls.
-    # Execute tools and append results to get the updated context.
-    updated_context = execute_tools(response.context, tool_calls, tools)
+    updated_context = execute_tools(response.context, tool_calls, tools, config.verbose)
 
-    loop(
-      llm_module,
-      model,
-      updated_context,
-      tools,
-      iteration + 1,
-      max_iter,
-      streaming?,
-      output_fn,
-      verbose?,
-      receive_timeout,
-      accumulated <> text
-    )
+    loop(llm_module, model, updated_context, tools, iteration + 1, config, accumulated <> text)
   end
 
-  # Wraps ReqLLM.Context.execute_and_append_tools/3 to handle error structs
-  # that don't implement String.Chars (e.g. ReqLLM.Error.Validation.Error).
-  defp execute_tools(context, tool_calls, tools) do
+  # --- Tool Execution ---
+
+  defp execute_tools(context, tool_calls, tools, verbose?) do
     Enum.reduce(tool_calls, context, fn tool_call, ctx ->
       name = extract_tool_name(tool_call)
       id = extract_tool_id(tool_call)
+      args = extract_tool_args(tool_call)
 
       result =
-        case find_and_execute(name, tool_call, tools) do
-          {:ok, value} -> value
-          {:error, error} -> "Error: #{format_tool_error(error)}"
+        case find_and_execute(name, args, tools) do
+          {:ok, value} ->
+            if verbose?, do: log_tool_result(name, :ok, value)
+            value
+
+          {:error, error} ->
+            error_msg = format_tool_error(name, error, tools)
+            Mix.shell().info("[tool error] #{name}: #{error_msg}")
+            error_msg
         end
 
       ReqLLM.Context.append(ctx, ReqLLM.Context.tool_result(id, result))
     end)
   end
 
-  defp find_and_execute(name, tool_call, tools) do
+  defp find_and_execute(name, args, tools) do
     case Enum.find(tools, fn t -> t.name == name end) do
-      nil -> {:error, "Tool #{name} not found"}
-      tool -> ReqLLM.Tool.execute(tool, extract_tool_args(tool_call))
+      nil -> {:error, {:not_found, name}}
+      tool -> ReqLLM.Tool.execute(tool, args)
     end
   end
+
+  # --- Error Formatting ---
+
+  # Builds actionable error messages that tell the LLM exactly what went wrong
+  # and what parameters are expected.
+  defp format_tool_error(name, {:not_found, _}, tools) do
+    available = tools |> Enum.map(& &1.name) |> Enum.join(", ")
+    "Error: Tool '#{name}' not found. Available tools: #{available}"
+  end
+
+  defp format_tool_error(name, error, tools) do
+    reason = extract_error_reason(error)
+    schema_hint = tool_schema_hint(name, tools)
+    "Error: #{reason}#{schema_hint}"
+  end
+
+  defp extract_error_reason(%{reason: reason}) when is_binary(reason), do: reason
+  defp extract_error_reason(error) when is_binary(error), do: error
+
+  defp extract_error_reason(error) do
+    if is_exception(error), do: Exception.message(error), else: inspect(error)
+  end
+
+  defp tool_schema_hint(name, tools) do
+    case Enum.find(tools, fn t -> t.name == name end) do
+      nil ->
+        ""
+
+      tool ->
+        params =
+          tool.parameter_schema
+          |> Enum.map(fn {key, opts} ->
+            type = Keyword.get(opts, :type, :any)
+            required? = Keyword.get(opts, :required, false)
+            suffix = if required?, do: " (required)", else: ""
+            "  - #{key}: #{type}#{suffix}"
+          end)
+          |> Enum.join("\n")
+
+        "\n\nExpected parameters for '#{name}':\n#{params}\n\nEnsure all required parameters are provided with correct types."
+    end
+  end
+
+  # --- Extraction Helpers ---
 
   defp extract_tool_name(%ReqLLM.ToolCall{function: %{name: name}}), do: name
   defp extract_tool_name(%{name: name}), do: name
@@ -184,17 +166,37 @@ defmodule Pyre.Tools.AgenticLoop do
   defp extract_tool_args(%{arguments: args}) when is_binary(args), do: Jason.decode!(args)
   defp extract_tool_args(%{arguments: args}), do: args
 
-  defp format_tool_error(error) when is_binary(error), do: error
-  defp format_tool_error(%{reason: reason}) when is_binary(reason), do: reason
+  # --- Logging ---
 
-  defp format_tool_error(error) do
-    if is_exception(error), do: Exception.message(error), else: inspect(error)
+  defp log_tool_calls(tool_calls, iteration, verbose?) do
+    Enum.each(tool_calls, fn tc ->
+      name = extract_tool_name(tc)
+      args = extract_tool_args(tc)
+      arg_keys = if is_map(args), do: Map.keys(args), else: []
+      empty? = args == %{} or args == nil
+
+      # Always log tool call name and whether args are present
+      Mix.shell().info("[tool #{iteration + 1}] #{name}(#{format_arg_summary(arg_keys, empty?)})")
+
+      # With verbose, log full argument details
+      if verbose? and not empty? do
+        Enum.each(args, fn {k, v} ->
+          display = if is_binary(v) and byte_size(v) > 200, do: "#{String.slice(v, 0, 200)}...(#{byte_size(v)} bytes)", else: inspect(v)
+          Mix.shell().info("[tool #{iteration + 1}]   #{k}: #{display}")
+        end)
+      end
+    end)
   end
 
-  defp log_tool_calls(tool_calls, iteration) do
-    Enum.each(tool_calls, fn tc ->
-      name = Map.get(tc, :name, "unknown")
-      Mix.shell().info("[tool #{iteration + 1}] #{name}")
-    end)
+  defp format_arg_summary(_keys, true), do: "EMPTY ARGS"
+  defp format_arg_summary(keys, false), do: Enum.join(keys, ", ")
+
+  defp log_tool_result(name, :ok, value) when is_binary(value) do
+    display = if byte_size(value) > 200, do: "#{String.slice(value, 0, 200)}...", else: value
+    Mix.shell().info("[tool result] #{name}: #{display}")
+  end
+
+  defp log_tool_result(name, :ok, value) do
+    Mix.shell().info("[tool result] #{name}: #{inspect(value, limit: 5)}")
   end
 end
