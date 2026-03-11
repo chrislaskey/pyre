@@ -2,8 +2,9 @@ defmodule Mix.Tasks.Pyre.Run do
   @moduledoc """
   Runs the multi-agent pipeline to build a Phoenix feature.
 
-  Five specialized LLM agents (Product Manager, Designer, Programmer,
-  Test Writer, Code Reviewer) collaborate serially to implement the feature.
+  Six specialized LLM agents (Product Manager, Designer, Programmer,
+  Test Writer, Code Reviewer, Shipper) collaborate serially to implement
+  the feature, then ship it as a GitHub pull request.
 
   ## Usage
 
@@ -26,6 +27,7 @@ defmodule Mix.Tasks.Pyre.Run do
     - `03_implementation_summary.md` -- Programmer output
     - `04_test_summary.md` -- Test Writer output
     - `05_review_verdict.md` -- Code Reviewer verdict (APPROVE/REJECT)
+    - `06_shipping_summary.md` -- Shipper output (branch, commit, PR URL)
   """
   @shortdoc "Runs multi-agent pipeline to build a Phoenix feature"
 

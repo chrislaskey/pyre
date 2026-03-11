@@ -2,11 +2,13 @@ defmodule Pyre.Flows.FeatureBuild do
   @moduledoc """
   Feature-building multi-agent flow.
 
-  Orchestrates five agent roles through a sequential pipeline:
+  Orchestrates six agent roles through a sequential pipeline:
 
-      planning -> designing -> implementing -> testing -> reviewing -> complete
+      planning -> designing -> implementing -> testing -> reviewing -> shipping -> complete
 
   The reviewing phase can loop back to implementing (up to 3 cycles).
+  On approval, the shipping phase creates a git branch, commits, pushes,
+  and opens a GitHub PR.
 
   ## Usage
 
@@ -24,7 +26,7 @@ defmodule Pyre.Flows.FeatureBuild do
     * `:log_fn` -- Function called with status/progress messages. Default `&IO.puts/1`.
   """
 
-  alias Pyre.Actions.{ProductManager, Designer, Programmer, TestWriter, QAReviewer}
+  alias Pyre.Actions.{ProductManager, Designer, Programmer, TestWriter, QAReviewer, Shipper}
   alias Pyre.Plugins.Artifact
 
   @max_review_cycles 3
@@ -34,7 +36,8 @@ defmodule Pyre.Flows.FeatureBuild do
     designing: [:implementing],
     implementing: [:testing],
     testing: [:reviewing],
-    reviewing: [:implementing, :complete],
+    reviewing: [:implementing, :shipping],
+    shipping: [:complete],
     complete: []
   }
 
@@ -78,7 +81,8 @@ defmodule Pyre.Flows.FeatureBuild do
         tests: nil,
         verdict: nil,
         verdict_text: nil,
-        review_cycle: 1
+        review_cycle: 1,
+        shipping_summary: nil
       }
 
       drive(state, context)
@@ -177,14 +181,32 @@ defmodule Pyre.Flows.FeatureBuild do
     end
   end
 
+  defp drive(%{phase: :shipping} = state, context) do
+    with {:ok, result} <-
+           run_action(Shipper, :shipper, state, context, %{
+             feature_description: state.feature_description,
+             requirements: state.requirements,
+             design: state.design,
+             implementation: state.implementation,
+             tests: state.tests,
+             verdict_text: state.verdict_text,
+             run_dir: state.run_dir
+           }) do
+      state
+      |> Map.merge(result)
+      |> advance_phase(:complete)
+      |> drive(context)
+    end
+  end
+
   defp handle_verdict(%{verdict: :approve, review_cycle: cycle} = state, context) do
     context.log_fn.("Review: APPROVED (cycle #{cycle})")
-    state |> advance_phase(:complete) |> drive(context)
+    state |> advance_phase(:shipping) |> drive(context)
   end
 
   defp handle_verdict(%{verdict: nil} = state, context) do
-    # Dry-run mode: no verdict was produced, treat as complete
-    state |> advance_phase(:complete) |> drive(context)
+    # Dry-run mode: no verdict was produced, advance to shipping
+    state |> advance_phase(:shipping) |> drive(context)
   end
 
   defp handle_verdict(%{verdict: :reject, review_cycle: cycle} = state, context)
@@ -207,7 +229,8 @@ defmodule Pyre.Flows.FeatureBuild do
     designer: :designing,
     programmer: :implementing,
     test_writer: :testing,
-    code_reviewer: :reviewing
+    code_reviewer: :reviewing,
+    shipper: :shipping
   }
 
   @stage_fallback_field %{
@@ -215,7 +238,8 @@ defmodule Pyre.Flows.FeatureBuild do
     designer: :design,
     programmer: :implementation,
     test_writer: :tests,
-    code_reviewer: {:verdict, :verdict_text}
+    code_reviewer: {:verdict, :verdict_text},
+    shipper: :shipping_summary
   }
 
   @stage_model_tier %{
@@ -223,7 +247,8 @@ defmodule Pyre.Flows.FeatureBuild do
     designer: :standard,
     programmer: :advanced,
     test_writer: :standard,
-    code_reviewer: :advanced
+    code_reviewer: :advanced,
+    shipper: :standard
   }
 
   defp run_action(action_module, stage_name, _state, context, params) do
