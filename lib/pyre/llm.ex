@@ -45,7 +45,7 @@ defmodule Pyre.LLM do
 
   @impl true
   def generate(model, messages, opts \\ []) do
-    context = build_context(messages)
+    context = build_reqllm_context(messages)
     req_opts = Keyword.drop(opts, [:output_fn])
 
     case ReqLLM.generate_text(model, context, req_opts) do
@@ -57,7 +57,7 @@ defmodule Pyre.LLM do
   @impl true
   def stream(model, messages, opts \\ []) do
     output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
-    context = build_context(messages)
+    context = build_reqllm_context(messages)
     req_opts = Keyword.drop(opts, [:output_fn])
 
     case ReqLLM.stream_text(model, context, req_opts) do
@@ -112,24 +112,13 @@ defmodule Pyre.LLM do
     end
   end
 
-  # Builds a simple list-of-maps context for generate/stream (existing behavior)
-  defp build_context(messages) do
-    messages
-    |> Enum.map(fn
-      %{role: :system, content: content} -> %{role: "system", content: content}
-      %{role: :user, content: content} when is_list(content) -> %{role: "user", content: content}
-      %{role: :user, content: content} -> %{role: "user", content: content}
-      %{role: :assistant, content: content} -> %{role: "assistant", content: content}
-    end)
-  end
-
-  # Builds a proper ReqLLM.Context for chat/4 (tool-use needs structured context)
   defp build_reqllm_context(messages) do
     msgs =
       Enum.map(messages, fn
         %{role: :system, content: content} -> ReqLLM.Context.system(content)
         %{role: :user, content: content} when is_list(content) -> ReqLLM.Context.user(content)
         %{role: :user, content: content} -> ReqLLM.Context.user(content)
+        %{role: :assistant, content: content} -> ReqLLM.Context.assistant(content)
       end)
 
     ReqLLM.Context.new(msgs)

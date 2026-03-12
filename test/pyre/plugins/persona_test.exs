@@ -88,6 +88,8 @@ defmodule Pyre.Plugins.PersonaTest do
     end
 
     test "returns multipart content when images are present" do
+      alias ReqLLM.Message.ContentPart
+
       attachments = [
         %{filename: "mockup.png", content: <<0x89, 0x50, 0x4E, 0x47>>, media_type: "image/png"}
       ]
@@ -95,10 +97,9 @@ defmodule Pyre.Plugins.PersonaTest do
       msg = Persona.user_message("Feature", "", "/tmp/run", "01.md", attachments)
       assert msg.role == :user
       assert is_list(msg.content)
-      assert [%{type: "text"} | image_parts] = msg.content
+      assert [%ContentPart{type: :text} | image_parts] = msg.content
       assert length(image_parts) == 1
-      assert hd(image_parts).type == "image"
-      assert hd(image_parts).source.media_type == "image/png"
+      assert %ContentPart{type: :image, media_type: "image/png"} = hd(image_parts)
     end
 
     test "handles mixed text and image attachments" do

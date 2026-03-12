@@ -77,15 +77,17 @@ defmodule Pyre.Plugins.Persona do
 
     text_body = Enum.join(sections, "\n\n")
 
+    alias ReqLLM.Message.ContentPart
+
     if image_attachments == [] do
       %{role: :user, content: text_body}
     else
       image_parts =
         Enum.map(image_attachments, fn att ->
-          %{type: "image", source: %{type: "base64", media_type: att.media_type, data: Base.encode64(att.content)}}
+          ContentPart.image(att.content, att.media_type)
         end)
 
-      %{role: :user, content: [%{type: "text", text: text_body} | image_parts]}
+      %{role: :user, content: [ContentPart.text(text_body) | image_parts]}
     end
   end
 
