@@ -164,23 +164,60 @@ defmodule Pyre.Tools do
     ReqLLM.Tool.new!(
       name: "list_directory",
       description:
-        "List files and directories at the given path. Path can be absolute or relative to the project root. #{paths_description(base_paths)}",
+        "List files and directories at the given path. Set recursive to true to list the full directory tree (directories shown with trailing /). #{paths_description(base_paths)}",
       parameter_schema: [
         path: [
           type: :string,
           required: true,
           doc: "Directory path (absolute or relative to project root)"
+        ],
+        recursive: [
+          type: :boolean,
+          required: false,
+          doc: "List directory tree recursively. Default: false"
         ]
       ],
-      callback: fn %{path: path} ->
-        full_path = resolve_path!(path, base_paths)
+      callback: fn params ->
+        full_path = resolve_path!(params.path, base_paths)
+        recursive? = Map.get(params, :recursive, false)
 
-        case File.ls(full_path) do
-          {:ok, entries} -> {:ok, entries |> Enum.sort() |> Enum.join("\n")}
-          {:error, reason} -> {:ok, "Error: #{reason}"}
+        if recursive? do
+          list_recursive(full_path, full_path)
+        else
+          case File.ls(full_path) do
+            {:ok, entries} -> {:ok, entries |> Enum.sort() |> Enum.join("\n")}
+            {:error, reason} -> {:ok, "Error: #{reason}"}
+          end
         end
       end
     )
+  end
+
+  defp list_recursive(dir, base) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        lines =
+          entries
+          |> Enum.sort()
+          |> Enum.flat_map(fn entry ->
+            full = Path.join(dir, entry)
+            relative = Path.relative_to(full, base)
+
+            if File.dir?(full) do
+              case list_recursive(full, base) do
+                {:ok, ""} -> [relative <> "/"]
+                {:ok, children} -> [relative <> "/" | String.split(children, "\n")]
+              end
+            else
+              [relative]
+            end
+          end)
+
+        {:ok, truncate(Enum.join(lines, "\n"))}
+
+      {:error, reason} ->
+        {:ok, "Error: #{reason}"}
+    end
   end
 
   defp run_command_tool(working_dir, allowed_commands) do
