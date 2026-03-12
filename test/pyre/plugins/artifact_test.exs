@@ -84,6 +84,79 @@ defmodule Pyre.Plugins.ArtifactTest do
     end
   end
 
+  describe "store_attachments/2 and read_attachments/1" do
+    test "round-trips attachment files", %{tmp_dir: tmp_dir} do
+      {:ok, run_dir} = Artifact.create_run_dir(tmp_dir)
+
+      attachments = [
+        %{filename: "spec.md", content: "# Spec\nDetails here"},
+        %{filename: "data.csv", content: "a,b,c\n1,2,3"}
+      ]
+
+      assert :ok = Artifact.store_attachments(run_dir, attachments)
+
+      result = Artifact.read_attachments(run_dir)
+      assert length(result) == 2
+      assert Enum.find(result, &(&1.filename == "spec.md")).content == "# Spec\nDetails here"
+      assert Enum.find(result, &(&1.filename == "data.csv")).media_type == "text/csv"
+    end
+
+    test "returns empty list when no prompt dir exists", %{tmp_dir: tmp_dir} do
+      {:ok, run_dir} = Artifact.create_run_dir(tmp_dir)
+      assert Artifact.read_attachments(run_dir) == []
+    end
+
+    test "store_attachments with empty list is a no-op", %{tmp_dir: tmp_dir} do
+      {:ok, run_dir} = Artifact.create_run_dir(tmp_dir)
+      assert :ok = Artifact.store_attachments(run_dir, [])
+      refute File.dir?(Path.join(run_dir, "prompt"))
+    end
+  end
+
+  describe "media_type_from_filename/1" do
+    test "classifies text files" do
+      assert Artifact.media_type_from_filename("readme.md") == "text/markdown"
+      assert Artifact.media_type_from_filename("notes.txt") == "text/plain"
+      assert Artifact.media_type_from_filename("data.csv") == "text/csv"
+      assert Artifact.media_type_from_filename("app.ex") == "text/x-elixir"
+      assert Artifact.media_type_from_filename("config.json") == "application/json"
+    end
+
+    test "classifies image files" do
+      assert Artifact.media_type_from_filename("mockup.png") == "image/png"
+      assert Artifact.media_type_from_filename("photo.jpg") == "image/jpeg"
+      assert Artifact.media_type_from_filename("photo.jpeg") == "image/jpeg"
+      assert Artifact.media_type_from_filename("anim.gif") == "image/gif"
+      assert Artifact.media_type_from_filename("modern.webp") == "image/webp"
+    end
+
+    test "returns octet-stream for unknown extensions" do
+      assert Artifact.media_type_from_filename("file.xyz") == "application/octet-stream"
+    end
+  end
+
+  describe "text_attachment?/1 and image_attachment?/1" do
+    test "text_attachment? returns true for text types" do
+      assert Artifact.text_attachment?(%{media_type: "text/markdown"})
+      assert Artifact.text_attachment?(%{media_type: "text/plain"})
+      assert Artifact.text_attachment?(%{media_type: "application/json"})
+    end
+
+    test "text_attachment? returns false for non-text types" do
+      refute Artifact.text_attachment?(%{media_type: "image/png"})
+      refute Artifact.text_attachment?(%{media_type: "application/octet-stream"})
+    end
+
+    test "image_attachment? returns true for image types" do
+      assert Artifact.image_attachment?(%{media_type: "image/png"})
+      assert Artifact.image_attachment?(%{media_type: "image/jpeg"})
+    end
+
+    test "image_attachment? returns false for non-image types" do
+      refute Artifact.image_attachment?(%{media_type: "text/plain"})
+    end
+  end
+
   describe "versioned_name/2" do
     test "cycle 1 returns base name" do
       assert Artifact.versioned_name("03_impl", 1) == "03_impl"

@@ -32,12 +32,33 @@ defmodule Pyre.Plugins.Persona do
   @doc """
   Builds a user message map for an agent stage.
 
-  Assembles the feature description, any artifacts from prior stages,
-  and output instructions telling the agent where to write its artifact.
+  Assembles the feature description, any prompt attachments, any artifacts
+  from prior stages, and output instructions telling the agent where to
+  write its artifact.
+
+  When image attachments are present, returns multipart content (a list of
+  content parts) instead of a plain string.
   """
-  @spec user_message(String.t(), String.t(), String.t(), String.t()) :: map()
-  def user_message(feature_description, artifacts_content, run_dir, artifact_filename) do
+  @spec user_message(String.t(), String.t(), String.t(), String.t(), [map()]) :: map()
+  def user_message(feature_description, artifacts_content, run_dir, artifact_filename, attachments \\ []) do
+    alias Pyre.Plugins.Artifact
+
+    text_attachments = Enum.filter(attachments, &Artifact.text_attachment?/1)
+    image_attachments = Enum.filter(attachments, &Artifact.image_attachment?/1)
+
     sections = ["## Feature Request\n\n#{feature_description}"]
+
+    sections =
+      if text_attachments != [] do
+        attachment_sections =
+          Enum.map(text_attachments, fn att ->
+            "### #{att.filename}\n\n#{att.content}"
+          end)
+
+        sections ++ ["## Prompt Attachments\n\n#{Enum.join(attachment_sections, "\n\n")}"]
+      else
+        sections
+      end
 
     sections =
       if artifacts_content != "" do
@@ -54,7 +75,18 @@ defmodule Pyre.Plugins.Persona do
           "## Output Instructions\n\nAfter completing your work, write a summary to: `#{output_path}`\n\nThe summary should be a Markdown document following the format specified in your persona instructions."
         ]
 
-    %{role: :user, content: Enum.join(sections, "\n\n")}
+    text_body = Enum.join(sections, "\n\n")
+
+    if image_attachments == [] do
+      %{role: :user, content: text_body}
+    else
+      image_parts =
+        Enum.map(image_attachments, fn att ->
+          %{type: "image", source: %{type: "base64", media_type: att.media_type, data: Base.encode64(att.content)}}
+        end)
+
+      %{role: :user, content: [%{type: "text", text: text_body} | image_parts]}
+    end
   end
 
   defp personas_dir do

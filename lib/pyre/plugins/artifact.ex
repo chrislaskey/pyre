@@ -108,6 +108,108 @@ defmodule Pyre.Plugins.Artifact do
   def versioned_name(base_name, 1), do: base_name
   def versioned_name(base_name, cycle) when cycle > 1, do: "#{base_name}_v#{cycle}"
 
+  @doc """
+  Stores attachment files in the `prompt/` subdirectory of a run directory.
+
+  Each attachment is a map with `:filename` and `:content` keys.
+  Returns `:ok` or `{:error, term()}`.
+  """
+  @spec store_attachments(String.t(), [map()]) :: :ok | {:error, term()}
+  def store_attachments(_run_dir, []), do: :ok
+
+  def store_attachments(run_dir, attachments) do
+    prompt_dir = Path.join(run_dir, "prompt")
+
+    with :ok <- File.mkdir_p(prompt_dir) do
+      Enum.reduce_while(attachments, :ok, fn attachment, :ok ->
+        path = Path.join(prompt_dir, attachment.filename)
+
+        case File.write(path, attachment.content) do
+          :ok -> {:cont, :ok}
+          {:error, _} = error -> {:halt, error}
+        end
+      end)
+    end
+  end
+
+  @doc """
+  Reads all attachment files from the `prompt/` subdirectory of a run directory.
+
+  Returns a list of attachment maps with `:filename`, `:content`, and `:media_type` keys.
+  """
+  @spec read_attachments(String.t()) :: [map()]
+  def read_attachments(run_dir) do
+    prompt_dir = Path.join(run_dir, "prompt")
+
+    case File.ls(prompt_dir) do
+      {:ok, filenames} ->
+        filenames
+        |> Enum.sort()
+        |> Enum.flat_map(fn filename ->
+          path = Path.join(prompt_dir, filename)
+
+          case File.read(path) do
+            {:ok, content} ->
+              [%{filename: filename, content: content, media_type: media_type_from_filename(filename)}]
+
+            {:error, _} ->
+              []
+          end
+        end)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  @doc """
+  Returns `true` if the attachment has a text-based media type.
+  """
+  @spec text_attachment?(map()) :: boolean()
+  def text_attachment?(%{media_type: "text/" <> _}), do: true
+  def text_attachment?(%{media_type: "application/json"}), do: true
+  def text_attachment?(_), do: false
+
+  @doc """
+  Returns `true` if the attachment has an image media type.
+  """
+  @spec image_attachment?(map()) :: boolean()
+  def image_attachment?(%{media_type: "image/" <> _}), do: true
+  def image_attachment?(_), do: false
+
+  @doc """
+  Maps a filename extension to a MIME media type.
+  """
+  @spec media_type_from_filename(String.t()) :: String.t()
+  def media_type_from_filename(filename) do
+    filename
+    |> Path.extname()
+    |> String.downcase()
+    |> extension_to_media_type()
+  end
+
+  @extension_map %{
+    ".md" => "text/markdown",
+    ".txt" => "text/plain",
+    ".csv" => "text/csv",
+    ".html" => "text/html",
+    ".css" => "text/css",
+    ".js" => "text/javascript",
+    ".ts" => "text/javascript",
+    ".ex" => "text/x-elixir",
+    ".exs" => "text/x-elixir",
+    ".json" => "application/json",
+    ".png" => "image/png",
+    ".jpg" => "image/jpeg",
+    ".jpeg" => "image/jpeg",
+    ".gif" => "image/gif",
+    ".webp" => "image/webp"
+  }
+
+  defp extension_to_media_type(ext) do
+    Map.get(@extension_map, ext, "application/octet-stream")
+  end
+
   defp ensure_md_extension(filename) do
     if String.ends_with?(filename, ".md"), do: filename, else: "#{filename}.md"
   end

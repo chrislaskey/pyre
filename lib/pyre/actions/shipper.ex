@@ -40,6 +40,8 @@ defmodule Pyre.Actions.Shipper do
     model = Helpers.resolve_model(@model_tier, context)
 
     with {:ok, system_msg} <- Persona.system_message(@persona) do
+      attachments = Map.get(params, :attachments, [])
+
       artifacts_content =
         Helpers.assemble_artifacts([
           {"01_requirements.md", params.requirements},
@@ -54,7 +56,8 @@ defmodule Pyre.Actions.Shipper do
           params.feature_description,
           artifacts_content,
           params.run_dir,
-          "#{@artifact_base}.md"
+          "#{@artifact_base}.md",
+          attachments
         )
 
       case Helpers.call_llm(context, model, [system_msg, user_msg]) do

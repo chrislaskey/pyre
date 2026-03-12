@@ -26,12 +26,15 @@ defmodule Pyre.Actions.ProductManager do
     model = Helpers.resolve_model(@model_tier, context)
 
     with {:ok, system_msg} <- Persona.system_message(@persona) do
+      attachments = Map.get(params, :attachments, [])
+
       user_msg =
         Persona.user_message(
           params.feature_description,
           "",
           params.run_dir,
-          "#{@artifact_base}.md"
+          "#{@artifact_base}.md",
+          attachments
         )
 
       case Helpers.call_llm(context, model, [system_msg, user_msg]) do

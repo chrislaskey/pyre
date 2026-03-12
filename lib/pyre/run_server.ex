@@ -193,7 +193,11 @@ defmodule Pyre.RunServer do
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    reply = Map.drop(state, [:opts, :task_ref, :task_pid])
+    reply =
+      state
+      |> Map.drop([:opts, :task_ref, :task_pid])
+      |> strip_attachment_content()
+
     {:reply, reply, state}
   end
 
@@ -394,6 +398,24 @@ defmodule Pyre.RunServer do
         "pyre:runs:#{id}",
         {:pyre_run_skipped_stages, id, skipped_stages}
       )
+    end
+  end
+
+  defp strip_attachment_content(reply) do
+    case Map.get(reply, :attachments) do
+      nil ->
+        reply
+
+      attachments when is_list(attachments) ->
+        stripped =
+          Enum.map(attachments, fn att ->
+            Map.take(att, [:filename, :media_type])
+          end)
+
+        Map.put(reply, :attachments, stripped)
+
+      _ ->
+        reply
     end
   end
 end

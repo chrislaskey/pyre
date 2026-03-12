@@ -70,8 +70,11 @@ defmodule Pyre.Flows.FeatureBuild do
       github: Keyword.get(opts, :github) || github_from_config()
     }
 
+    attachments = Keyword.get(opts, :attachments, [])
+
     with {:ok, run_dir} <- Artifact.create_run_dir(runs_dir),
-         :ok <- Artifact.write(run_dir, "00_feature", feature_description) do
+         :ok <- Artifact.write(run_dir, "00_feature", feature_description),
+         :ok <- Artifact.store_attachments(run_dir, attachments) do
       context.log_fn.("Run directory: #{run_dir}")
 
       state = %{
@@ -79,6 +82,7 @@ defmodule Pyre.Flows.FeatureBuild do
         feature_description: feature_description,
         run_dir: run_dir,
         working_dir: working_dir,
+        attachments: attachments,
         requirements: nil,
         design: nil,
         implementation: nil,
@@ -101,7 +105,8 @@ defmodule Pyre.Flows.FeatureBuild do
     with {:ok, result} <-
            run_action(ProductManager, :product_manager, state, context, %{
              feature_description: state.feature_description,
-             run_dir: state.run_dir
+             run_dir: state.run_dir,
+             attachments: state.attachments
            }) do
       state
       |> Map.merge(result)
@@ -115,7 +120,8 @@ defmodule Pyre.Flows.FeatureBuild do
            run_action(Designer, :designer, state, context, %{
              feature_description: state.feature_description,
              requirements: state.requirements,
-             run_dir: state.run_dir
+             run_dir: state.run_dir,
+             attachments: state.attachments
            }) do
       state
       |> Map.merge(result)
@@ -130,7 +136,8 @@ defmodule Pyre.Flows.FeatureBuild do
       requirements: state.requirements,
       design: state.design,
       run_dir: state.run_dir,
-      review_cycle: state.review_cycle
+      review_cycle: state.review_cycle,
+      attachments: state.attachments
     }
 
     params =
@@ -153,7 +160,8 @@ defmodule Pyre.Flows.FeatureBuild do
       design: state.design,
       implementation: state.implementation,
       run_dir: state.run_dir,
-      review_cycle: state.review_cycle
+      review_cycle: state.review_cycle,
+      attachments: state.attachments
     }
 
     params =
@@ -178,7 +186,8 @@ defmodule Pyre.Flows.FeatureBuild do
              implementation: state.implementation,
              tests: state.tests,
              run_dir: state.run_dir,
-             review_cycle: state.review_cycle
+             review_cycle: state.review_cycle,
+             attachments: state.attachments
            }) do
       state = Map.merge(state, result)
       handle_verdict(state, context)
@@ -194,7 +203,8 @@ defmodule Pyre.Flows.FeatureBuild do
              implementation: state.implementation,
              tests: state.tests,
              verdict_text: state.verdict_text,
-             run_dir: state.run_dir
+             run_dir: state.run_dir,
+             attachments: state.attachments
            }) do
       state
       |> Map.merge(result)

@@ -11,7 +11,7 @@ defmodule Pyre.LLM do
     the full response (tool_calls, finish_reason, updated context).
   """
 
-  @type message :: %{role: :system | :user | :assistant, content: String.t()}
+  @type message :: %{role: :system | :user | :assistant, content: String.t() | [map()]}
   @type model :: String.t()
 
   @doc """
@@ -117,6 +117,7 @@ defmodule Pyre.LLM do
     messages
     |> Enum.map(fn
       %{role: :system, content: content} -> %{role: "system", content: content}
+      %{role: :user, content: content} when is_list(content) -> %{role: "user", content: content}
       %{role: :user, content: content} -> %{role: "user", content: content}
       %{role: :assistant, content: content} -> %{role: "assistant", content: content}
     end)
@@ -127,6 +128,7 @@ defmodule Pyre.LLM do
     msgs =
       Enum.map(messages, fn
         %{role: :system, content: content} -> ReqLLM.Context.system(content)
+        %{role: :user, content: content} when is_list(content) -> ReqLLM.Context.user(content)
         %{role: :user, content: content} -> ReqLLM.Context.user(content)
       end)
 

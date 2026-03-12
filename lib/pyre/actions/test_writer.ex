@@ -32,6 +32,8 @@ defmodule Pyre.Actions.TestWriter do
     cycle = Map.get(params, :review_cycle, 1)
 
     with {:ok, system_msg} <- Persona.system_message(@persona) do
+      attachments = Map.get(params, :attachments, [])
+
       prior = [
         {"01_requirements.md", params.requirements},
         {"02_design_spec.md", params.design},
@@ -53,7 +55,8 @@ defmodule Pyre.Actions.TestWriter do
           params.feature_description,
           artifacts_content,
           params.run_dir,
-          "#{artifact_name}.md"
+          "#{artifact_name}.md",
+          attachments
         )
 
       working_dir = Map.get(context, :working_dir, ".")

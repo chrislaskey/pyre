@@ -33,6 +33,8 @@ defmodule Pyre.Actions.QAReviewer do
     cycle = Map.get(params, :review_cycle, 1)
 
     with {:ok, system_msg} <- Persona.system_message(@persona) do
+      attachments = Map.get(params, :attachments, [])
+
       artifacts_content =
         Helpers.assemble_artifacts([
           {"01_requirements.md", params.requirements},
@@ -48,7 +50,8 @@ defmodule Pyre.Actions.QAReviewer do
           params.feature_description,
           artifacts_content,
           params.run_dir,
-          "#{artifact_name}.md"
+          "#{artifact_name}.md",
+          attachments
         )
 
       working_dir = Map.get(context, :working_dir, ".")
