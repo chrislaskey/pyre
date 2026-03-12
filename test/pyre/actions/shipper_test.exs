@@ -7,7 +7,7 @@ defmodule Pyre.Actions.ShipperTest do
   @llm_response """
   ## Branch Name
 
-  feature/products-page
+  feature-products-page
 
   ## Commit Message
 
@@ -96,11 +96,36 @@ defmodule Pyre.Actions.ShipperTest do
     end
   end
 
+  describe "run/2 with missing GitHub config" do
+    test "returns friendly error when GitHub is not configured", %{run_dir: run_dir} do
+      Process.put(:mock_llm_response, @llm_response)
+
+      # Create a temporary git repo so we reach the config check
+      git_dir = Path.join(System.tmp_dir!(), "pyre_git_test_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(git_dir)
+      System.cmd("git", ["init"], cd: git_dir)
+      on_exit(fn -> File.rm_rf!(git_dir) end)
+
+      params = base_params(run_dir)
+
+      context = %{
+        llm: Pyre.LLM.Mock,
+        streaming: false,
+        working_dir: git_dir,
+        github: %{},
+        log_fn: &Function.identity/1
+      }
+
+      assert {:error, {:github_not_configured, message}} = Shipper.run(params, context)
+      assert message =~ "GitHub is not configured"
+    end
+  end
+
   describe "parse_shipping_plan/1" do
     test "parses all sections from LLM output" do
       plan = Shipper.parse_shipping_plan(@llm_response)
 
-      assert plan.branch_name == "feature/products-page"
+      assert plan.branch_name == "feature-products-page"
       assert plan.commit_message =~ "feat: add products listing"
       assert plan.pr_title == "Add products listing page"
       assert plan.pr_body =~ "Search functionality"
@@ -109,7 +134,7 @@ defmodule Pyre.Actions.ShipperTest do
     test "provides defaults for missing sections" do
       plan = Shipper.parse_shipping_plan("Some random text without sections")
 
-      assert plan.branch_name == "feature/pyre-changes"
+      assert plan.branch_name == "feature-pyre-changes"
       assert plan.commit_message == "feat: implement feature"
       assert plan.pr_title == "Implement feature"
       assert plan.pr_body == ""
@@ -119,7 +144,7 @@ defmodule Pyre.Actions.ShipperTest do
       text = """
       ## Branch Name
 
-      feature/test
+      feature-test
 
       ## Commit Message
 

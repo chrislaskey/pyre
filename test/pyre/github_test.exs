@@ -6,11 +6,14 @@ defmodule Pyre.GitHubTest do
   end
 
   describe "resolve_repo_config/2" do
-    test "finds matching repository entry" do
+    test "finds matching repository by URL" do
       Application.put_env(:pyre, :github,
-        default_token: "default-tok",
         repositories: [
-          [owner: "acme", repo: "app", token: "repo-tok", base_branch: "develop"]
+          [
+            url: "https://github.com/acme/app",
+            token: "repo-tok",
+            base_branch: "develop"
+          ]
         ]
       )
 
@@ -18,31 +21,40 @@ defmodule Pyre.GitHubTest do
                Pyre.GitHub.resolve_repo_config("acme", "app")
     end
 
-    test "falls back to default_token when no repo matches" do
+    test "matches SSH URLs" do
       Application.put_env(:pyre, :github,
-        default_token: "fallback-tok",
         repositories: [
-          [owner: "other", repo: "thing", token: "other-tok"]
+          [url: "git@github.com:acme/app.git", token: "ssh-tok"]
         ]
       )
 
-      assert {:ok, %{token: "fallback-tok", base_branch: "main"}} =
+      assert {:ok, %{token: "ssh-tok", base_branch: "main"}} =
                Pyre.GitHub.resolve_repo_config("acme", "app")
     end
 
-    test "uses default_token when repo entry has no token" do
+    test "returns error when no repo matches" do
       Application.put_env(:pyre, :github,
-        default_token: "default-tok",
         repositories: [
-          [owner: "acme", repo: "app", base_branch: "develop"]
+          [url: "https://github.com/other/thing", token: "other-tok"]
         ]
       )
 
-      assert {:ok, %{token: "default-tok", base_branch: "develop"}} =
+      assert {:error, :token_not_set} =
                Pyre.GitHub.resolve_repo_config("acme", "app")
     end
 
-    test "returns error when no token is available" do
+    test "returns error when repo entry has no token" do
+      Application.put_env(:pyre, :github,
+        repositories: [
+          [url: "https://github.com/acme/app", base_branch: "develop"]
+        ]
+      )
+
+      assert {:error, :token_not_set} =
+               Pyre.GitHub.resolve_repo_config("acme", "app")
+    end
+
+    test "returns error when repositories list is empty" do
       Application.put_env(:pyre, :github, repositories: [])
 
       assert {:error, :token_not_set} =
@@ -66,7 +78,7 @@ defmodule Pyre.GitHubTest do
     test "defaults base_branch to main for matching entry without it" do
       Application.put_env(:pyre, :github,
         repositories: [
-          [owner: "acme", repo: "app", token: "tok"]
+          [url: "https://github.com/acme/app", token: "tok"]
         ]
       )
 
@@ -77,8 +89,8 @@ defmodule Pyre.GitHubTest do
     test "matches first repository in list" do
       Application.put_env(:pyre, :github,
         repositories: [
-          [owner: "acme", repo: "app", token: "first-tok", base_branch: "main"],
-          [owner: "acme", repo: "app", token: "second-tok", base_branch: "develop"]
+          [url: "https://github.com/acme/app", token: "first-tok", base_branch: "main"],
+          [url: "https://github.com/acme/app", token: "second-tok", base_branch: "develop"]
         ]
       )
 

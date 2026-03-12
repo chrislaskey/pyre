@@ -67,15 +67,13 @@ your repository in `config/runtime.exs`:
 
 ```elixir
 # config/runtime.exs
-if github_token = System.get_env("GITHUB_TOKEN") do
+if System.get_env("GITHUB_REPO_URL") do
   config :pyre, :github,
-    default_token: github_token,
     repositories: [
       [
-        owner: System.get_env("PYRE_GITHUB_OWNER"),
-        repo: System.get_env("PYRE_GITHUB_REPO"),
-        token: System.get_env("PYRE_GITHUB_TOKEN", github_token),
-        base_branch: System.get_env("PYRE_GITHUB_BASE_BRANCH", "main")
+        url: System.get_env("GITHUB_REPO_URL"),
+        token: System.get_env("GITHUB_TOKEN"),
+        base_branch: System.get_env("GITHUB_BASE_BRANCH", "main")
       ]
     ]
 end
@@ -85,8 +83,7 @@ Set the required environment variables:
 
 ```bash
 export GITHUB_TOKEN=ghp_...
-export PYRE_GITHUB_OWNER=myorg
-export PYRE_GITHUB_REPO=my-app
+export GITHUB_REPO_URL=https://github.com/myorg/my-app
 ```
 
 When using Pyre as a library (e.g. via PyreWeb), the host app sets this config

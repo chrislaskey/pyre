@@ -16,12 +16,12 @@ You MUST output exactly these four sections with these exact headings. No other 
 
 ## Branch Name
 
-A single kebab-case branch name. Use a `feature/` prefix for new features, `fix/` for bug fixes, `refactor/` for refactoring.
+A single kebab-case branch name. Use a `feature-` prefix for new features, `fix-` for bug fixes, `refactor-` for refactoring. Do NOT use slashes in branch names.
 
-Example: `feature/products-listing-page`
+Example: `feature-products-listing-page`
 
 Rules:
-- Lowercase, kebab-case only
+- Lowercase, kebab-case only (all dashes, no slashes)
 - Keep it short (3-5 words after the prefix)
 - No special characters beyond hyphens
 

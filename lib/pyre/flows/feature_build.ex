@@ -255,10 +255,10 @@ defmodule Pyre.Flows.FeatureBuild do
     shipper: :standard
   }
 
-  defp run_action(action_module, stage_name, _state, context, params) do
+  defp run_action(action_module, stage_name, state, context, params) do
     if stage_skipped?(stage_name, context) do
       context.log_fn.("\n--- Skipping: #{stage_name} (disabled) ---")
-      fallback = Pyre.Plugins.BestPractices.fallback_text(stage_name)
+      fallback = stage_fallback_text(stage_name, state)
       {:ok, fallback_result(stage_name, fallback)}
     else
       if context.dry_run do
@@ -307,6 +307,14 @@ defmodule Pyre.Flows.FeatureBuild do
     end
   end
 
+  defp stage_fallback_text(:product_manager, state) do
+    state.feature_description
+  end
+
+  defp stage_fallback_text(stage_name, _state) do
+    Pyre.Plugins.BestPractices.fallback_text(stage_name)
+  end
+
   defp fallback_result(:code_reviewer, text) do
     %{verdict: :approve, verdict_text: text}
   end
@@ -352,18 +360,23 @@ defmodule Pyre.Flows.FeatureBuild do
 
         case repos do
           [first | _] ->
-            %{
-              owner: Keyword.get(first, :owner),
-              repo: Keyword.get(first, :repo),
-              token: Keyword.get(first, :token) || Keyword.get(config, :default_token),
-              base_branch: Keyword.get(first, :base_branch, "main")
-            }
+            url = Keyword.get(first, :url, "")
+
+            case Pyre.GitHub.parse_remote_url(url) do
+              {:ok, {owner, repo}} ->
+                %{
+                  owner: owner,
+                  repo: repo,
+                  token: Keyword.get(first, :token),
+                  base_branch: Keyword.get(first, :base_branch, "main")
+                }
+
+              {:error, _} ->
+                %{}
+            end
 
           [] ->
-            case Keyword.get(config, :default_token) do
-              nil -> %{}
-              token -> %{token: token}
-            end
+            %{}
         end
     end
   end

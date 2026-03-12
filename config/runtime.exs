@@ -9,20 +9,14 @@ if config_env() != :test do
     config :req_llm, openai_api_key: api_key
   end
 
-  if github_token = System.get_env("GITHUB_TOKEN") do
+  if System.get_env("GITHUB_REPO_URL") do
     config :pyre, :github,
-      default_token: github_token,
-      repositories:
-        if(System.get_env("PYRE_GITHUB_OWNER"),
-          do: [
-            [
-              owner: System.get_env("PYRE_GITHUB_OWNER"),
-              repo: System.get_env("PYRE_GITHUB_REPO"),
-              token: System.get_env("PYRE_GITHUB_TOKEN", github_token),
-              base_branch: System.get_env("PYRE_GITHUB_BASE_BRANCH", "main")
-            ]
-          ],
-          else: []
-        )
+      repositories: [
+        [
+          url: System.get_env("GITHUB_REPO_URL"),
+          token: System.get_env("GITHUB_TOKEN"),
+          base_branch: System.get_env("GITHUB_BASE_BRANCH", "main")
+        ]
+      ]
   end
 end

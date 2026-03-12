@@ -73,6 +73,9 @@ defmodule Pyre.Actions.Shipper do
               :ok = Artifact.write(params.run_dir, @artifact_base, text)
               {:ok, %{shipping_summary: text}}
 
+            not github_configured?(context) ->
+              {:error, {:github_not_configured, "GitHub is not configured. See the Pyre README for details."}}
+
             true ->
               case execute_shipping(shipping_plan, working_dir, context) do
                 {:ok, result} ->
@@ -96,7 +99,7 @@ defmodule Pyre.Actions.Shipper do
     sections = split_sections(text)
 
     %{
-      branch_name: sections |> Map.get("Branch Name", "feature/pyre-changes") |> String.trim(),
+      branch_name: sections |> Map.get("Branch Name", "feature-pyre-changes") |> String.trim(),
       commit_message:
         sections
         |> Map.get("Commit Message", "feat: implement feature")
@@ -134,6 +137,11 @@ defmodule Pyre.Actions.Shipper do
       {"true\n", 0} -> true
       _ -> false
     end
+  end
+
+  defp github_configured?(context) do
+    github = Map.get(context, :github, %{})
+    is_binary(github[:owner]) and is_binary(github[:repo]) and is_binary(github[:token])
   end
 
   defp execute_shipping(plan, working_dir, context) do

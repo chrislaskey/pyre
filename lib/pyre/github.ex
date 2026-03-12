@@ -7,12 +7,10 @@ defmodule Pyre.GitHub do
   Configure repositories in your `config/runtime.exs`:
 
       config :pyre, :github,
-        default_token: System.get_env("GITHUB_TOKEN"),
         repositories: [
           [
-            owner: System.get_env("PYRE_GITHUB_OWNER"),
-            repo: System.get_env("PYRE_GITHUB_REPO"),
-            token: System.get_env("PYRE_GITHUB_TOKEN"),
+            url: System.get_env("GITHUB_REPO_URL"),
+            token: System.get_env("GITHUB_TOKEN"),
             base_branch: "main"
           ]
         ]
@@ -27,7 +25,7 @@ defmodule Pyre.GitHub do
       Pyre.GitHub.create_pull_request("owner", "repo", %{
         title: "Add products page",
         body: "Implements CRUD for products.",
-        head: "feature/products-page",
+        head: "feature-products-page",
         base: "main"
       }, config.token)
 
@@ -38,8 +36,8 @@ defmodule Pyre.GitHub do
   @doc """
   Resolves GitHub configuration for a given owner/repo pair.
 
-  Looks up the `:github` application config for a matching repository entry.
-  Falls back to `:default_token` when no repo-specific entry matches.
+  Looks up the `:github` application config for a repository entry whose
+  URL matches the given owner and repo.
 
   Returns `{:ok, %{token: token, base_branch: base_branch}}` or
   `{:error, :token_not_set}`.
@@ -52,15 +50,16 @@ defmodule Pyre.GitHub do
 
     repo_entry =
       Enum.find(repos, fn entry ->
-        Keyword.get(entry, :owner) == owner and Keyword.get(entry, :repo) == repo
+        case parse_remote_url(Keyword.get(entry, :url, "")) do
+          {:ok, {entry_owner, entry_repo}} ->
+            entry_owner == owner and entry_repo == repo
+
+          _ ->
+            false
+        end
       end)
 
-    token =
-      if repo_entry do
-        Keyword.get(repo_entry, :token) || Keyword.get(github_config, :default_token)
-      else
-        Keyword.get(github_config, :default_token)
-      end
+    token = if repo_entry, do: Keyword.get(repo_entry, :token)
 
     case token do
       nil ->
@@ -119,7 +118,9 @@ defmodule Pyre.GitHub do
           {:ok, %{url: resp_body["html_url"], number: resp_body["number"]}}
 
         {:ok, %{status: 422, body: resp_body}} ->
-          message = get_in(resp_body, ["errors", Access.at(0), "message"]) || resp_body["message"]
+          message =
+            get_in(resp_body, ["errors", Access.at(0), "message"]) || resp_body["message"]
+
           {:error, {:validation_error, message}}
 
         {:ok, %{status: status, body: resp_body}} ->
@@ -156,7 +157,9 @@ defmodule Pyre.GitHub do
       # HTTPS: https://github.com/owner/repo.git
       String.match?(url, ~r{^https?://github\.com/}) ->
         path =
-          url |> String.replace(~r{^https?://github\.com/}, "") |> String.replace(~r{\.git$}, "")
+          url
+          |> String.replace(~r{^https?://github\.com/}, "")
+          |> String.replace(~r{\.git$}, "")
 
         parse_owner_repo(path)
 
