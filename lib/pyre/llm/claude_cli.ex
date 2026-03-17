@@ -167,23 +167,28 @@ defmodule Pyre.LLM.ClaudeCLI do
 
     task =
       Task.async(fn ->
-        env = build_env()
-        opts = [stderr_to_stdout: true, env: env] ++ run_opts
-        System.cmd(executable, args, opts)
+        try do
+          env = build_env()
+          opts = [stderr_to_stdout: true, env: env] ++ run_opts
+          {:ok, System.cmd(executable, args, opts)}
+        rescue
+          _ -> {:error, :cli_not_found}
+        end
       end)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
-      {:ok, {output, 0}} ->
+      {:ok, {:ok, {output, 0}}} ->
         {:ok, output}
 
-      {:ok, {output, exit_code}} ->
+      {:ok, {:ok, {output, exit_code}}} ->
         {:error, {:cli_error, exit_code, output}}
+
+      {:ok, {:error, _} = error} ->
+        error
 
       nil ->
         {:error, :timeout}
     end
-  rescue
-    _ -> {:error, :cli_not_found}
   end
 
   # --- CLI Execution (streaming) ---
