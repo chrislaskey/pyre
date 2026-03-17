@@ -30,6 +30,8 @@ defmodule Pyre.LLM.ClaudeCLI do
 
   @behaviour Pyre.LLM
 
+  require Logger
+
   @default_timeout 600_000
   @default_max_turns 50
 
@@ -69,6 +71,7 @@ defmodule Pyre.LLM.ClaudeCLI do
           "--output-format",
           "stream-json",
           "--verbose",
+          "--include-partial-messages",
           "--max-turns",
           "1",
           "-p",
@@ -93,10 +96,10 @@ defmodule Pyre.LLM.ClaudeCLI do
     args =
       build_base_args(cli_model, system_prompt) ++
         [
-          "--dangerously-skip-permissions",
+          "--permission-mode",
+          "bypass_permissions",
           "--allowedTools",
           "Bash,Read,Edit,Write,Glob,Grep",
-          "--no-session-persistence",
           "--max-turns",
           to_string(max_turns)
         ]
@@ -105,7 +108,15 @@ defmodule Pyre.LLM.ClaudeCLI do
 
     if streaming? do
       streaming_args =
-        args ++ ["--output-format", "stream-json", "--verbose", "-p", user_prompt]
+        args ++
+          [
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-partial-messages",
+            "-p",
+            user_prompt
+          ]
 
       run_cli_streaming(streaming_args, output_fn, timeout, run_opts)
     else
@@ -214,28 +225,32 @@ defmodule Pyre.LLM.ClaudeCLI do
           end
 
         port_opts =
-          [:binary, :exit_status, :use_stdio, {:line, 65_536}, {:args, args}] ++
+          [:binary, :exit_status, :use_stdio, :stderr_to_stdout, {:line, 65_536}, {:args, args}] ++
             cd_opts ++ env_opts
 
         port = Port.open({:spawn_executable, exe_path}, port_opts)
-        collect_streaming(port, output_fn, timeout, "")
+        collect_streaming(port, output_fn, timeout, "", "")
     end
   end
 
-  defp collect_streaming(port, output_fn, timeout, accumulated) do
+  defp collect_streaming(port, output_fn, timeout, accumulated, line_buffer) do
     receive do
       {^port, {:data, {:eol, line}}} ->
-        accumulated = process_stream_line(line, output_fn, accumulated)
-        collect_streaming(port, output_fn, timeout, accumulated)
+        full_line = line_buffer <> line
+        accumulated = process_stream_line(full_line, output_fn, accumulated)
+        collect_streaming(port, output_fn, timeout, accumulated, "")
 
-      {^port, {:data, {:noeol, _partial}}} ->
-        # Incomplete line — wait for the rest
-        collect_streaming(port, output_fn, timeout, accumulated)
+      {^port, {:data, {:noeol, partial}}} ->
+        collect_streaming(port, output_fn, timeout, accumulated, line_buffer <> partial)
 
       {^port, {:exit_status, 0}} ->
         {:ok, accumulated}
 
       {^port, {:exit_status, code}} ->
+        Logger.warning(
+          "[ClaudeCLI] exited with code #{code}, output: #{String.slice(accumulated, 0..500)}"
+        )
+
         {:error, {:cli_error, code, accumulated}}
     after
       timeout ->
