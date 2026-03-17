@@ -14,8 +14,23 @@ defmodule Pyre.Plugins.Persona do
   """
   @spec load(atom()) :: {:ok, String.t()} | {:error, term()}
   def load(persona_name) do
-    path = Path.join(personas_dir(), "#{persona_name}.md")
-    File.read(path)
+    filename = "#{persona_name}.md"
+    project_path = Path.join(project_personas_dir(), filename)
+
+    cond do
+      File.exists?(project_path) ->
+        File.read(project_path)
+
+      File.exists?(library_path = Path.join(library_personas_dir(), filename)) ->
+        File.read(library_path)
+
+      true ->
+        {:error,
+         {:persona_not_found, persona_name,
+          "Persona file '#{filename}' not found. " <>
+            "Looked in #{project_personas_dir()} and #{library_personas_dir()}. " <>
+            "Run `mix pyre.install` to set up Pyre, or check that the :pyre dependency is up to date."}}
+    end
   end
 
   @doc """
@@ -97,13 +112,11 @@ defmodule Pyre.Plugins.Persona do
     end
   end
 
-  defp personas_dir do
-    project_dir = Path.join(File.cwd!(), "priv/pyre/personas")
+  defp project_personas_dir do
+    Path.join(File.cwd!(), "priv/pyre/personas")
+  end
 
-    if File.dir?(project_dir) do
-      project_dir
-    else
-      Application.app_dir(:pyre, "priv/pyre/personas")
-    end
+  defp library_personas_dir do
+    Application.app_dir(:pyre, "priv/pyre/personas")
   end
 end

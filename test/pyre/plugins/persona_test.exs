@@ -31,7 +31,9 @@ defmodule Pyre.Plugins.PersonaTest do
     end
 
     test "returns error for nonexistent persona" do
-      assert {:error, :enoent} = Persona.load(:nonexistent)
+      assert {:error, {:persona_not_found, :nonexistent, msg}} = Persona.load(:nonexistent)
+      assert msg =~ "Persona file 'nonexistent.md' not found"
+      assert msg =~ "mix pyre.install"
     end
   end
 
@@ -44,7 +46,8 @@ defmodule Pyre.Plugins.PersonaTest do
     end
 
     test "returns error for nonexistent persona" do
-      assert {:error, :enoent} = Persona.system_message(:nonexistent)
+      assert {:error, {:persona_not_found, :nonexistent, _msg}} =
+               Persona.system_message(:nonexistent)
     end
   end
 
