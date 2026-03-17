@@ -13,7 +13,8 @@ defmodule Pyre.Tools do
     "head",
     "tail",
     "wc",
-    "mkdir"
+    "mkdir",
+    "echo"
   ]
 
   @moduledoc """

@@ -1,9 +1,10 @@
 defmodule Pyre.Actions.PRReviewer do
   @moduledoc """
-  Reviews the complete PR and posts a GitHub review comment.
+  Reviews the complete PR and posts a GitHub comment.
 
   Reuses the code_reviewer persona to evaluate all implementation phases,
-  then posts an APPROVE or REQUEST_CHANGES review on the GitHub PR.
+  then posts a comment on the GitHub PR. If the verdict is APPROVE, the
+  draft PR is also marked as ready for review.
   """
 
   use Jido.Action,
@@ -75,18 +76,22 @@ defmodule Pyre.Actions.PRReviewer do
     log_fn = Map.get(context, :log_fn, &IO.puts/1)
 
     if pr_number && github[:owner] && github[:repo] && github[:token] do
-      event = if verdict == :approve, do: "APPROVE", else: "REQUEST_CHANGES"
+      owner = github[:owner]
+      repo = github[:repo]
+      token = github[:token]
 
-      case Pyre.GitHub.create_review(
-             github[:owner],
-             github[:repo],
-             pr_number,
-             text,
-             event,
-             github[:token]
-           ) do
-        {:ok, _} -> log_fn.("Posted PR review: #{event}")
-        {:error, reason} -> log_fn.("Warning: could not post PR review (#{inspect(reason)})")
+      # Post as a PR comment (not a formal review)
+      case Pyre.GitHub.create_comment(owner, repo, pr_number, text, token) do
+        {:ok, _} -> log_fn.("Posted PR comment")
+        {:error, reason} -> log_fn.("Warning: could not post PR comment (#{inspect(reason)})")
+      end
+
+      # If approved, mark the draft PR as ready for review
+      if verdict == :approve do
+        case Pyre.GitHub.mark_ready_for_review(owner, repo, pr_number, token) do
+          :ok -> log_fn.("Marked PR as ready for review")
+          {:error, reason} -> log_fn.("Warning: could not mark PR ready (#{inspect(reason)})")
+        end
       end
     else
       log_fn.("Skipping GitHub PR review (not configured or no PR number)")

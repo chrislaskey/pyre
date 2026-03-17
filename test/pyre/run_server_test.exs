@@ -100,6 +100,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -125,6 +126,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -151,6 +153,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -176,6 +179,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -203,6 +207,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -229,6 +234,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -257,6 +263,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir,
@@ -288,6 +295,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
+        workflow: :feature_build,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir

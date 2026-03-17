@@ -165,7 +165,8 @@ defmodule Pyre.Actions.BranchSetup do
                  title: plan.pr_title,
                  body: plan.pr_body,
                  head: plan.branch_name,
-                 base: base
+                 base: base,
+                 draft: true
                },
                token
              ) do

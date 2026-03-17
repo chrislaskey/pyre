@@ -241,7 +241,7 @@ defmodule Pyre.Flows.IterativeBuild do
     designer: :standard,
     software_architect: :advanced,
     branch_setup: :standard,
-    software_engineer: :advanced,
+    software_engineer: :standard,
     pr_reviewer: :advanced
   }
 

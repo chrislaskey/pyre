@@ -33,10 +33,10 @@ You have the following tools to inspect the project (read-only — you cannot mo
 ## Phase Design Principles
 
 - **Small and focused**: Each phase should take 10-30 minutes for an engineer to implement
-- **Independently testable**: Each phase should have its own tests that pass
-- **Independently committable**: Each phase produces a clean commit
+- **Self-contained with tests**: Each phase MUST include writing tests for the code it introduces. Never create a separate "testing" phase — tests are part of the implementation phase that creates the code under test. This catches errors early and keeps each phase stable.
+- **Independently committable**: Each phase produces a clean commit where all tests pass
 - **Build on previous phases**: Later phases can assume earlier phases are complete
-- **Include tests in each phase**: Never defer testing to a later phase
+- **Test-first when possible**: Encourage writing tests alongside or before the implementation within each phase
 
 ## Output Format
 
@@ -55,11 +55,12 @@ You MUST output an implementation plan with the following structure. Use numbere
 - Example: "Existing database configuration", "Phase 1 schema"
 
 ### Outputs
-- What this phase produces
-- Example: "Product schema with validations", "Migration file"
+- What this phase produces (always include both implementation files AND test files)
+- Example: "Product schema with validations", "Migration file", "Product schema tests"
 
 ### Acceptance Criteria
 - Specific, testable criteria the engineer must satisfy
+- MUST include running tests for this phase's code
 - Example: "`mix ecto.migrate` runs without errors", "`mix test test/my_app/products/product_test.exs` passes"
 
 ## Phase 2: [Short descriptive title]

@@ -103,7 +103,8 @@ defmodule Pyre.GitHub do
         title: params[:title] || params.title,
         body: params[:body] || params.body,
         head: params[:head] || params.head,
-        base: params[:base] || "main"
+        base: params[:base] || "main",
+        draft: Map.get(params, :draft, false)
       }
 
       case Req.post("#{@base_url}/repos/#{owner}/#{repo}/pulls",
@@ -177,6 +178,100 @@ defmodule Pyre.GitHub do
         {:error, reason} ->
           {:error, {:request_failed, reason}}
       end
+    end
+  end
+
+  @doc """
+  Creates a comment on a GitHub pull request (issue comment, not a review).
+
+  Returns `{:ok, %{id: comment_id}}` on success, or `{:error, reason}` on failure.
+  """
+  @spec create_comment(String.t(), String.t(), integer(), String.t(), String.t()) ::
+          {:ok, %{id: integer()}} | {:error, term()}
+  def create_comment(owner, repo, pr_number, body, token) do
+    unless Code.ensure_loaded?(Req) do
+      {:error, :req_not_available}
+    else
+      case Req.post("#{@base_url}/repos/#{owner}/#{repo}/issues/#{pr_number}/comments",
+             json: %{body: body},
+             headers: [
+               {"authorization", "Bearer #{token}"},
+               {"accept", "application/vnd.github+json"},
+               {"x-github-api-version", "2022-11-28"}
+             ]
+           ) do
+        {:ok, %{status: 201, body: resp_body}} ->
+          {:ok, %{id: resp_body["id"]}}
+
+        {:ok, %{status: status, body: resp_body}} ->
+          {:error, {:api_error, status, resp_body["message"]}}
+
+        {:error, reason} ->
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+
+  @doc """
+  Marks a draft pull request as ready for review using the GraphQL API.
+
+  Returns `:ok` on success, or `{:error, reason}` on failure.
+  """
+  @spec mark_ready_for_review(String.t(), String.t(), integer(), String.t()) ::
+          :ok | {:error, term()}
+  def mark_ready_for_review(owner, repo, pr_number, token) do
+    unless Code.ensure_loaded?(Req) do
+      {:error, :req_not_available}
+    else
+      # First, get the PR's node_id via REST
+      case Req.get("#{@base_url}/repos/#{owner}/#{repo}/pulls/#{pr_number}",
+             headers: [
+               {"authorization", "Bearer #{token}"},
+               {"accept", "application/vnd.github+json"},
+               {"x-github-api-version", "2022-11-28"}
+             ]
+           ) do
+        {:ok, %{status: 200, body: resp_body}} ->
+          node_id = resp_body["node_id"]
+          mark_ready_graphql(node_id, token)
+
+        {:ok, %{status: status, body: resp_body}} ->
+          {:error, {:api_error, status, resp_body["message"]}}
+
+        {:error, reason} ->
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+
+  defp mark_ready_graphql(pull_request_id, token) do
+    query = """
+    mutation($id: ID!) {
+      markPullRequestReadyForReview(input: {pullRequestId: $id}) {
+        pullRequest { number }
+      }
+    }
+    """
+
+    case Req.post("https://api.github.com/graphql",
+           json: %{query: query, variables: %{id: pull_request_id}},
+           headers: [
+             {"authorization", "Bearer #{token}"},
+             {"accept", "application/vnd.github+json"}
+           ]
+         ) do
+      {:ok, %{status: 200, body: %{"data" => _}}} ->
+        :ok
+
+      {:ok, %{status: 200, body: %{"errors" => errors}}} ->
+        message = get_in(errors, [Access.at(0), "message"]) || inspect(errors)
+        {:error, {:graphql_error, message}}
+
+      {:ok, %{status: status, body: resp_body}} ->
+        {:error, {:api_error, status, resp_body["message"]}}
+
+      {:error, reason} ->
+        {:error, {:request_failed, reason}}
     end
   end
 

@@ -132,7 +132,7 @@ defmodule Pyre.RunServer do
       |> Keyword.get(:skipped_stages, [])
       |> MapSet.new()
 
-    workflow = Keyword.get(opts, :workflow, :feature_build)
+    workflow = Keyword.get(opts, :workflow, :iterative_build)
 
     state = %{
       id: id,
