@@ -25,33 +25,52 @@ defmodule Pyre.Actions.Helpers do
   @doc """
   Calls the LLM via the module in context, respecting streaming preference.
 
-  When `tools:` option is provided, delegates to the agentic loop for
-  multi-turn tool-use conversations.
+  When `tools:` option is provided and the backend manages its own tool loop
+  (e.g., `Pyre.LLM.ClaudeCLI`), calls `chat/4` directly. Otherwise delegates
+  to `Pyre.Tools.AgenticLoop` for multi-turn tool-use conversations.
   """
   def call_llm(context, model, messages, opts \\ []) do
     llm = Map.get(context, :llm, Pyre.LLM.default())
     streaming? = Map.get(context, :streaming, true)
     tools = Keyword.get(opts, :tools, [])
 
-    if tools != [] do
-      output_fn = Map.get(context, :output_fn, &IO.write/1)
-      log_fn = Map.get(context, :log_fn, &IO.puts/1)
-      verbose? = Map.get(context, :verbose, false)
+    cond do
+      tools != [] and manages_tool_loop?(llm) ->
+        llm.chat(model, messages, tools, cli_opts(context))
 
-      Pyre.Tools.AgenticLoop.run(llm, model, messages, tools,
-        streaming: streaming?,
-        output_fn: output_fn,
-        log_fn: log_fn,
-        verbose: verbose?
-      )
-    else
-      if streaming? do
+      tools != [] ->
+        output_fn = Map.get(context, :output_fn, &IO.write/1)
+        log_fn = Map.get(context, :log_fn, &IO.puts/1)
+        verbose? = Map.get(context, :verbose, false)
+
+        Pyre.Tools.AgenticLoop.run(llm, model, messages, tools,
+          streaming: streaming?,
+          output_fn: output_fn,
+          log_fn: log_fn,
+          verbose: verbose?
+        )
+
+      streaming? ->
         output_fn = Map.get(context, :output_fn, &IO.write/1)
         llm.stream(model, messages, output_fn: output_fn)
-      else
+
+      true ->
         llm.generate(model, messages, [])
-      end
     end
+  end
+
+  defp manages_tool_loop?(llm) do
+    function_exported?(llm, :manages_tool_loop?, 0) and llm.manages_tool_loop?()
+  end
+
+  defp cli_opts(context) do
+    [
+      streaming: Map.get(context, :streaming, true),
+      output_fn: Map.get(context, :output_fn, &IO.write/1),
+      working_dir: Map.get(context, :working_dir),
+      verbose: Map.get(context, :verbose, false),
+      max_turns: Map.get(context, :max_turns, 50)
+    ]
   end
 
   @doc """

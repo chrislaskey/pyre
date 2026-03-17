@@ -1,0 +1,341 @@
+defmodule Pyre.LLM.ClaudeCLI do
+  @moduledoc """
+  LLM backend that delegates to the `claude` CLI subprocess.
+
+  Uses `claude -p` (print mode) for non-interactive LLM calls.
+  When called with tools via `chat/4`, the CLI runs its own internal
+  agentic loop with built-in tools (Bash, Read, Edit, Write, Glob, Grep),
+  bypassing Pyre's `AgenticLoop` entirely.
+
+  ## Prerequisites
+
+  The `claude` CLI must be installed and on PATH:
+
+      npm install -g @anthropic-ai/claude-code
+
+  ## Configuration
+
+      # Select as default backend via env var:
+      PYRE_LLM_BACKEND=claude_cli
+
+      # Or in config:
+      config :pyre, :llm_backend, :claude_cli
+
+  ## Cost
+
+  When authenticated via `claude auth login` (Pro/Max subscription),
+  CLI usage is included in the subscription. When authenticated via
+  `ANTHROPIC_API_KEY`, costs are identical to direct API calls.
+  """
+
+  @behaviour Pyre.LLM
+
+  @default_timeout 600_000
+  @default_max_turns 50
+
+  @impl true
+  def manages_tool_loop?, do: true
+
+  # --- generate/3 ---
+
+  @impl true
+  def generate(model, messages, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+    cli_model = map_model(model)
+    {system_prompt, user_prompt} = extract_prompts(messages)
+
+    args =
+      build_base_args(cli_model, system_prompt) ++
+        ["--output-format", "json", "--max-turns", "1", "-p", user_prompt]
+
+    case run_cli(args, timeout) do
+      {:ok, output} -> parse_json_result(output)
+      {:error, _} = error -> error
+    end
+  end
+
+  # --- stream/3 ---
+
+  @impl true
+  def stream(model, messages, opts \\ []) do
+    output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+    cli_model = map_model(model)
+    {system_prompt, user_prompt} = extract_prompts(messages)
+
+    args =
+      build_base_args(cli_model, system_prompt) ++
+        [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "-p",
+          user_prompt
+        ]
+
+    run_cli_streaming(args, output_fn, timeout)
+  end
+
+  # --- chat/4 ---
+
+  @impl true
+  def chat(model, messages, _tools, opts \\ []) do
+    streaming? = Keyword.get(opts, :streaming, false)
+    output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+    max_turns = Keyword.get(opts, :max_turns, @default_max_turns)
+    working_dir = Keyword.get(opts, :working_dir)
+    cli_model = map_model(model)
+    {system_prompt, user_prompt} = extract_prompts(messages)
+
+    args =
+      build_base_args(cli_model, system_prompt) ++
+        [
+          "--dangerously-skip-permissions",
+          "--allowedTools",
+          "Bash,Read,Edit,Write,Glob,Grep",
+          "--no-session-persistence",
+          "--max-turns",
+          to_string(max_turns)
+        ]
+
+    run_opts = if working_dir, do: [cd: working_dir], else: []
+
+    if streaming? do
+      streaming_args =
+        args ++ ["--output-format", "stream-json", "--verbose", "-p", user_prompt]
+
+      run_cli_streaming(streaming_args, output_fn, timeout, run_opts)
+    else
+      batch_args = args ++ ["--output-format", "json", "-p", user_prompt]
+
+      case run_cli(batch_args, timeout, run_opts) do
+        {:ok, output} -> parse_json_result(output)
+        {:error, _} = error -> error
+      end
+    end
+  end
+
+  # --- Model Mapping ---
+
+  @doc false
+  def map_model("anthropic:claude-haiku" <> _), do: "haiku"
+  def map_model("anthropic:claude-sonnet" <> _), do: "sonnet"
+  def map_model("anthropic:claude-opus" <> _), do: "opus"
+  def map_model("haiku"), do: "haiku"
+  def map_model("sonnet"), do: "sonnet"
+  def map_model("opus"), do: "opus"
+  def map_model(other), do: other
+
+  # --- Prompt Extraction ---
+
+  @doc false
+  def extract_prompts(messages) when is_list(messages) do
+    system_parts =
+      messages
+      |> Enum.filter(fn %{role: role} -> role == :system end)
+      |> Enum.map(fn %{content: content} -> to_text(content) end)
+      |> Enum.join("\n\n")
+
+    user_parts =
+      messages
+      |> Enum.filter(fn %{role: role} -> role == :user end)
+      |> Enum.map(fn %{content: content} -> to_text(content) end)
+      |> Enum.join("\n\n")
+
+    {system_parts, user_parts}
+  end
+
+  def extract_prompts(_other), do: {"", "Please continue."}
+
+  defp to_text(content) when is_binary(content), do: content
+
+  defp to_text(parts) when is_list(parts) do
+    parts
+    |> Enum.filter(fn p -> is_map(p) and Map.get(p, :type) == :text end)
+    |> Enum.map_join("\n", fn p -> p.text end)
+  end
+
+  defp to_text(_), do: ""
+
+  # --- CLI Execution (batch) ---
+
+  defp run_cli(args, timeout, run_opts \\ []) do
+    executable = cli_executable()
+
+    task =
+      Task.async(fn ->
+        env = build_env()
+        opts = [stderr_to_stdout: true, env: env] ++ run_opts
+        System.cmd(executable, args, opts)
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task) do
+      {:ok, {output, 0}} ->
+        {:ok, output}
+
+      {:ok, {output, exit_code}} ->
+        {:error, {:cli_error, exit_code, output}}
+
+      nil ->
+        {:error, :timeout}
+    end
+  rescue
+    _ -> {:error, :cli_not_found}
+  end
+
+  # --- CLI Execution (streaming) ---
+
+  defp run_cli_streaming(args, output_fn, timeout, run_opts \\ []) do
+    executable = cli_executable()
+
+    case System.find_executable(executable) do
+      nil ->
+        {:error, :cli_not_found}
+
+      exe_path ->
+        cd_opts =
+          case Keyword.get(run_opts, :cd) do
+            nil -> []
+            dir -> [{:cd, to_charlist(dir)}]
+          end
+
+        env_opts =
+          case build_env() do
+            [] -> []
+            env -> [{:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)}]
+          end
+
+        port_opts =
+          [:binary, :exit_status, :use_stdio, {:line, 65_536}, {:args, args}] ++
+            cd_opts ++ env_opts
+
+        port = Port.open({:spawn_executable, exe_path}, port_opts)
+        collect_streaming(port, output_fn, timeout, "")
+    end
+  end
+
+  defp collect_streaming(port, output_fn, timeout, accumulated) do
+    receive do
+      {^port, {:data, {:eol, line}}} ->
+        accumulated = process_stream_line(line, output_fn, accumulated)
+        collect_streaming(port, output_fn, timeout, accumulated)
+
+      {^port, {:data, {:noeol, _partial}}} ->
+        # Incomplete line — wait for the rest
+        collect_streaming(port, output_fn, timeout, accumulated)
+
+      {^port, {:exit_status, 0}} ->
+        {:ok, accumulated}
+
+      {^port, {:exit_status, code}} ->
+        {:error, {:cli_error, code, accumulated}}
+    after
+      timeout ->
+        Port.close(port)
+        {:error, :timeout}
+    end
+  end
+
+  defp process_stream_line(line, output_fn, accumulated) do
+    case Jason.decode(line) do
+      {:ok, %{"type" => "assistant", "message" => %{"content" => content}}} ->
+        text =
+          content
+          |> Enum.filter(fn part -> Map.get(part, "type") == "text" end)
+          |> Enum.map_join("", fn part -> Map.get(part, "text", "") end)
+
+        if text != "", do: output_fn.(text)
+        text
+
+      {:ok, %{"type" => "result", "result" => text}} when is_binary(text) ->
+        text
+
+      _ ->
+        accumulated
+    end
+  end
+
+  # --- JSON Parsing ---
+
+  @doc false
+  def parse_json_result(output) do
+    trimmed = String.trim(output)
+
+    cond do
+      # Try as JSON array first (--output-format json returns an array)
+      String.starts_with?(trimmed, "[") ->
+        parse_json_array(trimmed)
+
+      # Try as NDJSON (newline-delimited JSON objects)
+      trimmed != "" ->
+        parse_ndjson(trimmed)
+
+      true ->
+        {:error, {:parse_error, "empty output"}}
+    end
+  end
+
+  defp parse_json_array(text) do
+    case Jason.decode(text) do
+      {:ok, items} when is_list(items) ->
+        case find_result(items) do
+          nil -> {:error, {:parse_error, text}}
+          result -> {:ok, result}
+        end
+
+      _ ->
+        {:error, {:parse_error, text}}
+    end
+  end
+
+  defp parse_ndjson(text) do
+    result =
+      text
+      |> String.split("\n", trim: true)
+      |> Enum.reduce(nil, fn line, acc ->
+        case Jason.decode(line) do
+          {:ok, %{"type" => "result", "result" => result}} when is_binary(result) -> result
+          _ -> acc
+        end
+      end)
+
+    case result do
+      nil -> {:error, {:parse_error, text}}
+      text -> {:ok, text}
+    end
+  end
+
+  defp find_result(items) do
+    items
+    |> Enum.find_value(fn
+      %{"type" => "result", "result" => text} when is_binary(text) -> text
+      _ -> nil
+    end)
+  end
+
+  # --- Helpers ---
+
+  defp build_base_args(model, system_prompt) do
+    args = ["--model", model]
+
+    if system_prompt != "" do
+      args ++ ["--append-system-prompt", system_prompt]
+    else
+      args
+    end
+  end
+
+  defp build_env do
+    case System.get_env("ANTHROPIC_API_KEY") do
+      nil -> []
+      key -> [{"ANTHROPIC_API_KEY", key}]
+    end
+  end
+
+  defp cli_executable do
+    Application.get_env(:pyre, :claude_cli_executable, "claude")
+  end
+end

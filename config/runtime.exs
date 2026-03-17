@@ -9,6 +9,12 @@ if config_env() != :test do
     config :req_llm, openai_api_key: api_key
   end
 
+  case System.get_env("PYRE_LLM_BACKEND") do
+    "claude_cli" -> config :pyre, :llm_backend, :claude_cli
+    "req_llm" -> config :pyre, :llm_backend, :req_llm
+    _ -> :ok
+  end
+
   if paths = System.get_env("PYRE_ALLOWED_PATHS") do
     config :pyre,
       allowed_paths:
