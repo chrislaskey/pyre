@@ -29,7 +29,7 @@ defmodule Pyre.Actions.Helpers do
   multi-turn tool-use conversations.
   """
   def call_llm(context, model, messages, opts \\ []) do
-    llm = Map.get(context, :llm, Pyre.LLM)
+    llm = Map.get(context, :llm, Pyre.LLM.default())
     streaming? = Map.get(context, :streaming, true)
     tools = Keyword.get(opts, :tools, [])
 

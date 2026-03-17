@@ -1,14 +1,13 @@
 defmodule Pyre.LLM do
   @moduledoc """
-  LLM abstraction layer using ReqLLM.
+  LLM behaviour for Pyre.
 
-  Provides generate, stream, and chat functions that are provider-agnostic.
-  Actions call through this module (or a mock implementing the same interface)
-  via the `:llm` key in their context.
+  Implementations:
+  - `Pyre.LLM.ReqLLM` — default, uses ReqLLM/jido_ai
+  - `Pyre.LLM.ClaudeCLI` — Claude CLI subprocess backend
+  - `Pyre.LLM.Mock` — test mock
 
-  - `generate/3` and `stream/3` return `{:ok, text}` for simple text-only flows.
-  - `chat/4` returns `{:ok, ReqLLM.Response.t()}` for tool-use flows that need
-    the full response (tool_calls, finish_reason, updated context).
+  The `:llm` key in action context selects the implementation module.
   """
 
   @type message :: %{role: :system | :user | :assistant, content: String.t() | [map()]}
@@ -31,96 +30,33 @@ defmodule Pyre.LLM do
   Calls the LLM with tool support, returning the full response.
 
   Used by the agentic loop for multi-turn tool-use conversations.
-  Supports both streaming and non-streaming via the `:streaming` option.
-
-  Options:
-    - `:tools` - list of `ReqLLM.Tool.t()` structs
-    - `:streaming` - boolean, default `false`
-    - `:output_fn` - streaming token callback, default `&IO.write/1`
+  ReqLLM-backed implementations return `ReqLLM.Response.t()`.
+  CLI backends return plain `String.t()` (they manage their own tool loop).
   """
   @callback chat(model(), [message()] | ReqLLM.Context.t(), [ReqLLM.Tool.t()], keyword()) ::
-              {:ok, ReqLLM.Response.t()} | {:error, term()}
+              {:ok, ReqLLM.Response.t() | String.t()} | {:error, term()}
 
-  @behaviour __MODULE__
+  @doc """
+  Returns true if this backend manages its own tool-use loop internally.
 
-  @impl true
-  def generate(model, messages, opts \\ []) do
-    context = build_reqllm_context(messages)
-    req_opts = Keyword.drop(opts, [:output_fn])
+  When true, `Pyre.Actions.Helpers.call_llm/4` calls `chat/4` directly
+  instead of routing through `Pyre.Tools.AgenticLoop`.
+  """
+  @callback manages_tool_loop?() :: boolean()
 
-    case ReqLLM.generate_text(model, context, req_opts) do
-      {:ok, response} -> {:ok, ReqLLM.Response.text(response)}
-      {:error, _} = error -> error
+  @optional_callbacks [manages_tool_loop?: 0]
+
+  @doc """
+  Returns the default LLM module based on application config.
+
+  Reads `:pyre, :llm_backend` — defaults to `:req_llm`.
+  Set `PYRE_LLM_BACKEND=claude_cli` to use the Claude CLI backend.
+  """
+  def default do
+    case Application.get_env(:pyre, :llm_backend, :req_llm) do
+      :claude_cli -> Pyre.LLM.ClaudeCLI
+      :req_llm -> Pyre.LLM.ReqLLM
+      module when is_atom(module) -> module
     end
-  end
-
-  @impl true
-  def stream(model, messages, opts \\ []) do
-    output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
-    context = build_reqllm_context(messages)
-    req_opts = Keyword.drop(opts, [:output_fn])
-
-    case ReqLLM.stream_text(model, context, req_opts) do
-      {:ok, response} ->
-        text =
-          response
-          |> ReqLLM.StreamResponse.tokens()
-          |> Stream.each(output_fn)
-          |> Enum.join("")
-
-        {:ok, text}
-
-      {:error, _} = error ->
-        error
-    end
-  end
-
-  @impl true
-  def chat(model, messages, tools, opts \\ []) do
-    streaming? = Keyword.get(opts, :streaming, false)
-    output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
-
-    context =
-      case messages do
-        %ReqLLM.Context{} -> messages
-        msgs when is_list(msgs) -> build_reqllm_context(msgs)
-      end
-
-    req_opts = [tools: tools] ++ Keyword.drop(opts, [:streaming, :output_fn, :tools])
-
-    if streaming? do
-      chat_streaming(model, context, req_opts, output_fn)
-    else
-      chat_non_streaming(model, context, req_opts)
-    end
-  end
-
-  defp chat_non_streaming(model, context, req_opts) do
-    case ReqLLM.generate_text(model, context, req_opts) do
-      {:ok, %ReqLLM.Response{}} = ok -> ok
-      {:error, _} = error -> error
-    end
-  end
-
-  defp chat_streaming(model, context, req_opts, output_fn) do
-    case ReqLLM.stream_text(model, context, req_opts) do
-      {:ok, stream_response} ->
-        ReqLLM.StreamResponse.process_stream(stream_response, on_result: output_fn)
-
-      {:error, _} = error ->
-        error
-    end
-  end
-
-  defp build_reqllm_context(messages) do
-    msgs =
-      Enum.map(messages, fn
-        %{role: :system, content: content} -> ReqLLM.Context.system(content)
-        %{role: :user, content: content} when is_list(content) -> ReqLLM.Context.user(content)
-        %{role: :user, content: content} -> ReqLLM.Context.user(content)
-        %{role: :assistant, content: content} -> ReqLLM.Context.assistant(content)
-      end)
-
-    ReqLLM.Context.new(msgs)
   end
 end

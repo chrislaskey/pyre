@@ -66,7 +66,7 @@ defmodule Pyre.Flows.IterativeBuild do
     allowed_paths = Keyword.get(opts, :allowed_paths) || allowed_paths_from_config()
 
     context = %{
-      llm: Keyword.get(opts, :llm, Pyre.LLM),
+      llm: Keyword.get(opts, :llm, Pyre.LLM.default()),
       streaming: streaming?,
       output_fn: Keyword.get(opts, :output_fn, &IO.write/1),
       log_fn: Keyword.get(opts, :log_fn, &IO.puts/1),
