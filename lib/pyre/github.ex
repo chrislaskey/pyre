@@ -122,7 +122,46 @@ defmodule Pyre.GitHub do
           message =
             get_in(resp_body, ["errors", Access.at(0), "message"]) || resp_body["message"]
 
-          {:error, {:validation_error, message}}
+          if String.contains?(message || "", "already exists") do
+            find_open_pull_request(owner, repo, body.head, token)
+          else
+            {:error, {:validation_error, message}}
+          end
+
+        {:ok, %{status: status, body: resp_body}} ->
+          {:error, {:api_error, status, resp_body["message"]}}
+
+        {:error, reason} ->
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+
+  @doc """
+  Finds an open pull request by head branch.
+
+  Returns `{:ok, %{url: html_url, number: number}}` if found,
+  or `{:error, :not_found}` if none exists.
+  """
+  @spec find_open_pull_request(String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, %{url: String.t(), number: integer()}} | {:error, term()}
+  def find_open_pull_request(owner, repo, head_branch, token) do
+    unless Code.ensure_loaded?(Req) do
+      {:error, :req_not_available}
+    else
+      case Req.get(
+             "#{@base_url}/repos/#{owner}/#{repo}/pulls?head=#{owner}:#{head_branch}&state=open",
+             headers: [
+               {"authorization", "Bearer #{token}"},
+               {"accept", "application/vnd.github+json"},
+               {"x-github-api-version", "2022-11-28"}
+             ]
+           ) do
+        {:ok, %{status: 200, body: [pr | _]}} ->
+          {:ok, %{url: pr["html_url"], number: pr["number"]}}
+
+        {:ok, %{status: 200, body: []}} ->
+          {:error, :not_found}
 
         {:ok, %{status: status, body: resp_body}} ->
           {:error, {:api_error, status, resp_body["message"]}}

@@ -98,17 +98,55 @@ defmodule Pyre.Actions.BranchSetup do
     log_fn = Map.get(context, :log_fn, &IO.puts/1)
 
     with :ok <- update_gitignore(working_dir, log_fn),
-         :ok <- run_git(["checkout", "-b", plan.branch_name], working_dir, log_fn),
+         :ok <- checkout_or_create_branch(plan.branch_name, working_dir, log_fn),
          :ok <- run_git(["add", "-A"], working_dir, log_fn),
          :ok <-
-           run_git(
-             ["commit", "-m", "chore: initialize iterative build with planning artifacts"],
+           commit_if_changed(
+             "chore: initialize iterative build with planning artifacts",
              working_dir,
              log_fn
            ),
          :ok <- run_git(["push", "-u", "origin", plan.branch_name], working_dir, log_fn) do
       pr_result = create_pr(plan, context)
       {:ok, pr_result}
+    end
+  end
+
+  defp checkout_or_create_branch(branch_name, working_dir, log_fn) do
+    log_fn.("  git checkout -b #{branch_name}")
+
+    {output, code} =
+      System.cmd("git", ["checkout", "-b", branch_name],
+        cd: working_dir,
+        stderr_to_stdout: true
+      )
+
+    cond do
+      code == 0 ->
+        :ok
+
+      String.contains?(output, "already exists") ->
+        log_fn.("  Branch already exists, switching to existing branch")
+        run_git(["checkout", branch_name], working_dir, log_fn)
+
+      true ->
+        {:error, {:git_error, "git checkout -b #{branch_name}", code, String.trim(output)}}
+    end
+  end
+
+  defp commit_if_changed(message, working_dir, log_fn) do
+    log_fn.("  git commit -m \"#{message}\"")
+
+    {output, code} =
+      System.cmd("git", ["commit", "-m", message],
+        cd: working_dir,
+        stderr_to_stdout: true
+      )
+
+    cond do
+      code == 0 -> :ok
+      String.contains?(output, "nothing to commit") -> :ok
+      true -> {:error, {:git_error, "git commit", code, String.trim(output)}}
     end
   end
 
