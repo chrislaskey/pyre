@@ -174,7 +174,11 @@ defmodule Pyre.LLM.ClaudeCLI do
         try do
           env = build_env()
           opts = [stderr_to_stdout: true, env: env] ++ run_opts
-          {:ok, System.cmd(executable, args, opts)}
+
+          # Wrap via shell to redirect stdin from /dev/null.
+          # The CLI blocks waiting for stdin EOF otherwise.
+          # Using "$0"/"$@" passes args as positional params (no shell escaping needed).
+          {:ok, System.cmd("/bin/sh", ["-c", ~s(exec "$0" "$@" </dev/null), executable | args], opts)}
         rescue
           _ -> {:error, :cli_not_found}
         end
@@ -183,6 +187,9 @@ defmodule Pyre.LLM.ClaudeCLI do
     case Task.yield(task, timeout) || Task.shutdown(task) do
       {:ok, {:ok, {output, 0}}} ->
         {:ok, output}
+
+      {:ok, {:ok, {_output, 127}}} ->
+        {:error, :cli_not_found}
 
       {:ok, {:ok, {output, exit_code}}} ->
         {:error, {:cli_error, exit_code, output}}
@@ -204,7 +211,12 @@ defmodule Pyre.LLM.ClaudeCLI do
       nil ->
         {:error, :cli_not_found}
 
-      exe_path ->
+      _exe_path ->
+        # Wrap via shell to redirect stdin from /dev/null.
+        # The CLI blocks waiting for stdin EOF otherwise.
+        shell_script = ~s(exec "$0" "$@" </dev/null)
+        sh_path = System.find_executable("sh")
+
         cd_opts =
           case Keyword.get(run_opts, :cd) do
             nil -> []
@@ -217,11 +229,13 @@ defmodule Pyre.LLM.ClaudeCLI do
             env -> [{:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)}]
           end
 
+        sh_args = ["-c", shell_script, executable | args]
+
         port_opts =
-          [:binary, :exit_status, :use_stdio, :stderr_to_stdout, {:line, 65_536}, {:args, args}] ++
+          [:binary, :exit_status, :use_stdio, :stderr_to_stdout, {:line, 65_536}, {:args, sh_args}] ++
             cd_opts ++ env_opts
 
-        port = Port.open({:spawn_executable, exe_path}, port_opts)
+        port = Port.open({:spawn_executable, sh_path}, port_opts)
         collect_streaming(port, output_fn, timeout, "", "")
     end
   end
