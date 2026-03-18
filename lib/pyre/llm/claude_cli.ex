@@ -118,7 +118,6 @@ defmodule Pyre.LLM.ClaudeCLI do
             "--output-format",
             "stream-json",
             "--verbose",
-            "--include-partial-messages",
             "-p",
             user_prompt
           ]
