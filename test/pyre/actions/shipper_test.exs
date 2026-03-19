@@ -194,20 +194,11 @@ defmodule Pyre.Actions.ShipperTest do
       assert plan.pr_title == "Implement hello-world"
     end
 
-    test "derives defaults from feature_description when run_dir has no slug" do
-      # Simulates the case where :feature opt was not passed to the flow
+    test "uses timestamp directory name as fallback when no feature slug" do
       run_dir = "/tmp/priv/pyre/features/20260319_142935/20260319_142935"
-      plan = Shipper.parse_shipping_plan("No sections", run_dir, "Build a products page")
+      plan = Shipper.parse_shipping_plan("No sections", run_dir)
 
-      assert plan.branch_name == "feature-build-a-products-page"
-      assert plan.commit_message == "feat: implement build-a-products-page"
-      assert plan.pr_title == "Implement build-a-products-page"
-    end
-
-    test "derives defaults from feature_description when run_dir is nil" do
-      plan = Shipper.parse_shipping_plan("No sections", nil, "Add user authentication")
-
-      assert plan.branch_name == "feature-add-user-authentication"
+      assert plan.branch_name == "feature-20260319_142935"
     end
 
     test "strips code fences from commit message" do
