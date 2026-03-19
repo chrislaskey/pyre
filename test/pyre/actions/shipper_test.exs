@@ -179,7 +179,7 @@ defmodule Pyre.Actions.ShipperTest do
     test "provides defaults for missing sections" do
       plan = Shipper.parse_shipping_plan("Some random text without sections")
 
-      assert plan.branch_name == "feature-pyre-changes"
+      assert plan.branch_name == "pyre-changes"
       assert plan.commit_message == "feat: implement pyre-changes"
       assert plan.pr_title == "Implement pyre-changes"
       assert plan.pr_body == ""
@@ -189,7 +189,7 @@ defmodule Pyre.Actions.ShipperTest do
       run_dir = "/tmp/priv/pyre/features/hello-world/20260319_142935"
       plan = Shipper.parse_shipping_plan("No sections here", run_dir)
 
-      assert plan.branch_name == "feature-hello-world"
+      assert plan.branch_name == "hello-world"
       assert plan.commit_message == "feat: implement hello-world"
       assert plan.pr_title == "Implement hello-world"
     end
@@ -198,7 +198,7 @@ defmodule Pyre.Actions.ShipperTest do
       run_dir = "/tmp/priv/pyre/features/20260319_142935/20260319_142935"
       plan = Shipper.parse_shipping_plan("No sections", run_dir)
 
-      assert plan.branch_name == "feature-20260319_142935"
+      assert plan.branch_name == "20260319_142935"
     end
 
     test "strips code fences from commit message" do
