@@ -50,8 +50,8 @@ defmodule Pyre.Actions.BranchSetup do
 
       case Helpers.call_llm(context, model, [system_msg, user_msg]) do
         {:ok, text} ->
-          shipping_plan = Pyre.Actions.Shipper.parse_shipping_plan(text)
           working_dir = Map.get(context, :working_dir, ".")
+          shipping_plan = Pyre.Actions.Shipper.parse_shipping_plan(text, params.run_dir, working_dir)
 
           cond do
             Map.get(context, :dry_run, false) ->
