@@ -162,7 +162,26 @@ defmodule Pyre.LLM.ClaudeCLI do
       |> Enum.map(fn %{content: content} -> to_text(content) end)
       |> Enum.join("\n\n")
 
-    {system_parts, user_parts}
+    # Embed persona/system instructions directly in the user prompt so
+    # Claude Code follows them more reliably.  The same content is still
+    # passed via --append-system-prompt for system-level positioning.
+    user_prompt =
+      if system_parts != "" do
+        """
+        <persona>
+        #{system_parts}
+        </persona>
+
+        You MUST follow the persona instructions above for the duration of this task. \
+        Stay in character, use the output format specified, and do not deviate from the role described.
+
+        #{user_parts}\
+        """
+      else
+        user_parts
+      end
+
+    {system_parts, user_prompt}
   end
 
   def extract_prompts(_other), do: {"", "Please continue."}

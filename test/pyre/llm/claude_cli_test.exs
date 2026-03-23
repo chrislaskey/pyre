@@ -28,7 +28,7 @@ defmodule Pyre.LLM.ClaudeCLITest do
   end
 
   describe "extract_prompts/1" do
-    test "separates system and user messages" do
+    test "embeds system content in user prompt for Claude Code reinforcement" do
       messages = [
         %{role: :system, content: "You are a helpful assistant."},
         %{role: :user, content: "Hello world"}
@@ -36,10 +36,12 @@ defmodule Pyre.LLM.ClaudeCLITest do
 
       {system, user} = ClaudeCLI.extract_prompts(messages)
       assert system == "You are a helpful assistant."
-      assert user == "Hello world"
+      assert user =~ "<persona>\nYou are a helpful assistant.\n</persona>"
+      assert user =~ "You MUST follow the persona instructions"
+      assert user =~ "Hello world"
     end
 
-    test "joins multiple system messages" do
+    test "joins multiple system messages and embeds in user prompt" do
       messages = [
         %{role: :system, content: "System part 1"},
         %{role: :system, content: "System part 2"},
@@ -48,7 +50,8 @@ defmodule Pyre.LLM.ClaudeCLITest do
 
       {system, user} = ClaudeCLI.extract_prompts(messages)
       assert system == "System part 1\n\nSystem part 2"
-      assert user == "User query"
+      assert user =~ "<persona>\nSystem part 1\n\nSystem part 2\n</persona>"
+      assert user =~ "User query"
     end
 
     test "handles messages with no system prompt" do
