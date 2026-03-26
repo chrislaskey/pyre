@@ -76,6 +76,7 @@ defmodule Pyre.Tools do
   def for_role(:software_architect, working_dir, opts), do: read_only_tools(working_dir, opts)
   def for_role(:software_engineer, working_dir, opts), do: all_tools(working_dir, opts)
   def for_role(:generalist, working_dir, opts), do: all_tools(working_dir, opts)
+  def for_role(:prototype_engineer, working_dir, opts), do: all_tools(working_dir, opts)
 
   defp read_only_tools(working_dir, opts) do
     allowed = Keyword.get(opts, :allowed_commands, @default_allowed_commands)

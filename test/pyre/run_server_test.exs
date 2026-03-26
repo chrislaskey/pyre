@@ -527,6 +527,58 @@ defmodule Pyre.RunServerTest do
     assert final_state.phase == :generalist
   end
 
+  test "prototype workflow uses default interactive stages", %{tmp_dir: tmp_dir} do
+    AgentMock.setup([
+      "Prototype output."
+    ])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Build a prototype",
+        workflow: :prototype,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert state.workflow == :prototype
+    # Prototype flow defaults to interactive prototyping stage
+    assert MapSet.member?(state.interactive_stages, :prototyping)
+
+    # The run will be waiting for input since prototyping is interactive by default.
+    assert wait_for_waiting(id), "Expected prototype run to reach waiting_for_input"
+    :ok = Pyre.RunServer.continue_stage(id)
+
+    wait_for_status(id, :complete)
+
+    {:ok, final_state} = Pyre.RunServer.get_state(id)
+    assert final_state.status == :complete
+  end
+
+  test "task workflow is not interactive by default", %{tmp_dir: tmp_dir} do
+    AgentMock.setup([
+      "Task output."
+    ])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Add pagination",
+        workflow: :task,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert state.workflow == :task
+    # Task flow is NOT interactive by default
+    assert MapSet.size(state.interactive_stages) == 0
+
+    wait_for_status(id, :complete)
+
+    {:ok, final_state} = Pyre.RunServer.get_state(id)
+    assert final_state.status == :complete
+  end
+
   # --- Helpers ---
 
   defp wait_for_status(id, expected_status, timeout \\ 15_000) do

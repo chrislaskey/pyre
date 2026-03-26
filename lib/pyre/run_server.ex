@@ -483,6 +483,7 @@ defmodule Pyre.RunServer do
         message =~ ~r/Stage: software_architect/ -> :architecting
         message =~ ~r/Stage: pr_setup/ -> :pr_setup
         message =~ ~r/Stage: software_engineer/ -> :engineering
+        message =~ ~r/Stage: prototype_engineer/ -> :prototyping
         message =~ ~r/Stage: pr_reviewer/ -> :reviewing
         true -> nil
       end
@@ -497,6 +498,8 @@ defmodule Pyre.RunServer do
 
   defp flow_module(:chat), do: Pyre.Flows.Chat
   defp flow_module(:feature), do: Pyre.Flows.Feature
+  defp flow_module(:prototype), do: Pyre.Flows.Prototype
+  defp flow_module(:task), do: Pyre.Flows.Task
   defp flow_module(:code_review), do: Pyre.Flows.CodeReview
   defp flow_module(:overnight_feature), do: Pyre.Flows.OvernightFeature
 
@@ -506,6 +509,14 @@ defmodule Pyre.RunServer do
 
   defp workflow_stages(:feature) do
     [:architecting, :pr_setup, :engineering]
+  end
+
+  defp workflow_stages(:prototype) do
+    [:prototyping]
+  end
+
+  defp workflow_stages(:task) do
+    [:tasking]
   end
 
   defp workflow_stages(:code_review) do
