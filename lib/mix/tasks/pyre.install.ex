@@ -21,7 +21,7 @@ defmodule Mix.Tasks.Pyre.Install do
 
   use Igniter.Mix.Task
 
-  @personas ~w(product_manager designer programmer test_writer code_reviewer software_architect software_engineer shipper)
+  @personas ~w(product_manager designer programmer test_writer code_reviewer software_architect software_engineer shipper generalist prototype_engineer)
 
   @impl Igniter.Mix.Task
   def info(_argv, _composing_task) do
