@@ -174,6 +174,11 @@ defmodule Pyre.RunServer do
       |> Keyword.get(:skipped_stages, [])
       |> MapSet.new()
 
+    interactive =
+      opts
+      |> Keyword.get(:interactive_stages, [])
+      |> MapSet.new()
+
     workflow = Keyword.get(opts, :workflow, :iterative_build)
     llm = Keyword.get(opts, :llm, Pyre.LLM.default())
     backend = if llm == Pyre.LLM.ClaudeCLI, do: :claude_cli, else: :other
@@ -190,7 +195,7 @@ defmodule Pyre.RunServer do
       started_at: now,
       completed_at: nil,
       skipped_stages: skipped,
-      interactive_stages: MapSet.new(),
+      interactive_stages: interactive,
       waiting_for_input: false,
       pending_from: nil,
       session_ids: %{},
