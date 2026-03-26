@@ -1,7 +1,7 @@
-defmodule Pyre.Flows.FeatureBuildTest do
+defmodule Pyre.Flows.OvernightRunTest do
   use ExUnit.Case, async: false
 
-  alias Pyre.Flows.FeatureBuild
+  alias Pyre.Flows.OvernightRun
 
   setup do
     tmp_dir = Path.join(System.tmp_dir!(), "pyre_flow_test_#{System.unique_integer([:positive])}")
@@ -34,7 +34,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        FeatureBuild.run("Build a products page",
+        OvernightRun.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           project_dir: tmp_dir
@@ -69,7 +69,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        FeatureBuild.run("Build a products page",
+        OvernightRun.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           project_dir: tmp_dir
@@ -102,7 +102,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        FeatureBuild.run("Build a products page",
+        OvernightRun.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           project_dir: tmp_dir
@@ -125,11 +125,9 @@ defmodule Pyre.Flows.FeatureBuildTest do
       "## Branch Name\n\nfeature/change\n\n## Commit Message\n\nfeat: change\n\n## PR Title\n\nChange\n\n## PR Body\n\nChange."
     ])
 
-    # Fast mode sets model_override in context. We verify it completes
-    # successfully (actions receive the override via context.model_override).
     result =
       with_cwd(tmp_dir, fn ->
-        FeatureBuild.run("Build a products page",
+        OvernightRun.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           fast: true,
@@ -144,7 +142,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
   test "dry run skips LLM calls", %{tmp_dir: tmp_dir} do
     result =
       with_cwd(tmp_dir, fn ->
-        FeatureBuild.run("Build a products page",
+        OvernightRun.run("Build a products page",
           llm: Pyre.LLM.Mock,
           streaming: false,
           dry_run: true,
@@ -152,8 +150,6 @@ defmodule Pyre.Flows.FeatureBuildTest do
         )
       end)
 
-    # Dry run completes but with nil state values since no LLM was called.
-    # The flow returns ok because run_action returns {:ok, %{}} in dry_run mode.
     assert {:ok, state} = result
     assert state.phase == :complete
   end
@@ -171,7 +167,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
     logs = Agent.start_link(fn -> [] end) |> elem(1)
 
     with_cwd(tmp_dir, fn ->
-      FeatureBuild.run("Build a products page",
+      OvernightRun.run("Build a products page",
         llm: Pyre.LLM.Mock,
         streaming: false,
         verbose: true,
@@ -181,7 +177,6 @@ defmodule Pyre.Flows.FeatureBuildTest do
     end)
 
     log_messages = Agent.get(logs, & &1)
-    # Verbose mode should include action module names and run_dir
     assert Enum.any?(log_messages, &(&1 =~ "[verbose] action:"))
     assert Enum.any?(log_messages, &(&1 =~ "[verbose] run_dir:"))
 
@@ -198,7 +193,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
 
     result =
       with_cwd(tmp_dir, fn ->
-        FeatureBuild.run("Build a products page",
+        OvernightRun.run("Build a products page",
           llm: FailingLLM,
           streaming: false,
           project_dir: tmp_dir,
@@ -222,7 +217,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
     logs = Agent.start_link(fn -> [] end) |> elem(1)
 
     with_cwd(tmp_dir, fn ->
-      FeatureBuild.run("Build a products page",
+      OvernightRun.run("Build a products page",
         llm: Pyre.LLM.Mock,
         streaming: false,
         project_dir: tmp_dir,
@@ -231,7 +226,6 @@ defmodule Pyre.Flows.FeatureBuildTest do
     end)
 
     log_messages = Agent.get(logs, & &1)
-    # Should include run directory, stage starts, and completions
     assert Enum.any?(log_messages, &(&1 =~ "Run directory:"))
     assert Enum.any?(log_messages, &(&1 =~ "Stage: product_manager"))
     assert Enum.any?(log_messages, &(&1 =~ "Completed: product_manager"))
@@ -253,7 +247,7 @@ defmodule Pyre.Flows.FeatureBuildTest do
     output = Agent.start_link(fn -> [] end) |> elem(1)
 
     with_cwd(tmp_dir, fn ->
-      FeatureBuild.run("Build a products page",
+      OvernightRun.run("Build a products page",
         llm: Pyre.LLM.Mock,
         streaming: false,
         project_dir: tmp_dir,
@@ -262,9 +256,6 @@ defmodule Pyre.Flows.FeatureBuildTest do
       )
     end)
 
-    # Non-streaming without tools calls generate/3, which returns text directly
-    # to the action — output_fn is not called in this path. This verifies
-    # the callback is accepted without error.
     assert is_list(Agent.get(output, & &1))
 
     Agent.stop(output)

@@ -100,7 +100,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -126,7 +126,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -153,7 +153,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -179,7 +179,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -207,7 +207,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -234,7 +234,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -263,7 +263,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir,
@@ -295,7 +295,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -340,7 +340,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -366,7 +366,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -400,7 +400,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
@@ -420,33 +420,29 @@ defmodule Pyre.RunServerTest do
     # This mock returns responses in sequence. After a reply is sent the flow
     # calls chat/4 again with --resume, which consumes the next response.
     AgentMock.setup([
-      # planning (non-interactive)
-      "Requirements doc.",
-      # designing (interactive) — initial call
-      "Design spec.",
-      # designing — resume call with user reply
-      "Updated design spec with error states.",
-      # designing — finalize call
-      "Final design spec.",
-      # remaining stages (non-interactive)
+      # architecting (interactive) — initial call
       "Architecture plan.",
-      "Branch setup done.",
-      "Implementation summary.",
-      "PR reviewed."
+      # architecting — resume call with user reply
+      "Updated architecture plan with error handling.",
+      # architecting — finalize call
+      "Final architecture plan.",
+      # remaining stages (non-interactive)
+      "## Branch Name\n\nfeature/page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page.",
+      "Implementation summary."
     ])
 
     Phoenix.PubSub.subscribe(pubsub, "pyre:runs:#{:waiting_test}")
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :iterative_build,
+        workflow: :feature,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir
       )
 
-    # Enable interactive for designing phase
-    :ok = Pyre.RunServer.toggle_interactive_stage(id, :designing)
+    # Enable interactive for architecting phase
+    :ok = Pyre.RunServer.toggle_interactive_stage(id, :architecting)
 
     Phoenix.PubSub.subscribe(pubsub, "pyre:runs:#{id}")
 
@@ -485,7 +481,7 @@ defmodule Pyre.RunServerTest do
 
     {:ok, id} =
       Pyre.RunServer.start_run("Build a page",
-        workflow: :feature_build,
+        workflow: :overnight_run,
         llm: AgentMock,
         streaming: false,
         project_dir: tmp_dir

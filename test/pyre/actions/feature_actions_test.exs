@@ -17,8 +17,6 @@ defmodule Pyre.Actions.SoftwareArchitectTest do
 
     params = %{
       feature_description: "Build a products page",
-      requirements: "Product listing requirements",
-      design: "Design spec content",
       run_dir: run_dir
     }
 
@@ -31,14 +29,14 @@ defmodule Pyre.Actions.SoftwareArchitectTest do
   end
 end
 
-defmodule Pyre.Actions.BranchSetupTest do
+defmodule Pyre.Actions.PRSetupTest do
   use ExUnit.Case, async: false
 
-  alias Pyre.Actions.BranchSetup
+  alias Pyre.Actions.PRSetup
   alias Pyre.Plugins.Artifact
 
   setup do
-    tmp_dir = Path.join(System.tmp_dir!(), "pyre_bs_test_#{System.unique_integer([:positive])}")
+    tmp_dir = Path.join(System.tmp_dir!(), "pyre_ps_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
@@ -53,18 +51,16 @@ defmodule Pyre.Actions.BranchSetupTest do
 
     params = %{
       feature_description: "Build a products page",
-      requirements: "Requirements",
-      design: "Design",
       architecture_plan: "Architecture plan",
       run_dir: run_dir
     }
 
     context = %{llm: Pyre.LLM.Mock, streaming: false, dry_run: true}
 
-    assert {:ok, result} = BranchSetup.run(params, context)
+    assert {:ok, result} = PRSetup.run(params, context)
     assert result.branch_name == "feature/products-page"
-    assert result.branch_setup =~ "Branch Name"
-    assert {:ok, _content} = Artifact.read(run_dir, "04_branch_setup")
+    assert result.pr_setup =~ "Branch Name"
+    assert {:ok, _content} = Artifact.read(run_dir, "04_pr_setup")
   end
 
   test "non-git-repo skips git operations", %{run_dir: run_dir} do
@@ -75,14 +71,12 @@ defmodule Pyre.Actions.BranchSetupTest do
 
     # Use a temp dir that is definitely not a git repo
     non_git_dir =
-      Path.join(System.tmp_dir!(), "pyre_bs_nogit_#{System.unique_integer([:positive])}")
+      Path.join(System.tmp_dir!(), "pyre_ps_nogit_#{System.unique_integer([:positive])}")
 
     File.mkdir_p!(non_git_dir)
 
     params = %{
       feature_description: "Build something",
-      requirements: "Requirements",
-      design: "Design",
       architecture_plan: "Architecture plan",
       run_dir: run_dir
     }
@@ -94,7 +88,7 @@ defmodule Pyre.Actions.BranchSetupTest do
       log_fn: fn _ -> :ok end
     }
 
-    assert {:ok, result} = BranchSetup.run(params, context)
+    assert {:ok, result} = PRSetup.run(params, context)
     assert result.branch_name == "feature/change"
 
     File.rm_rf!(non_git_dir)
@@ -120,10 +114,8 @@ defmodule Pyre.Actions.SoftwareEngineerTest do
 
     params = %{
       feature_description: "Build a products page",
-      requirements: "Requirements",
-      design: "Design",
       architecture_plan: "Architecture plan",
-      branch_setup: "Branch setup summary",
+      pr_setup: "PR setup summary",
       run_dir: run_dir
     }
 
@@ -155,8 +147,6 @@ defmodule Pyre.Actions.PRReviewerTest do
 
     params = %{
       feature_description: "Build a products page",
-      requirements: "Requirements",
-      design: "Design",
       architecture_plan: "Architecture plan",
       implementation_summary: "Implementation summary",
       run_dir: run_dir
@@ -175,8 +165,6 @@ defmodule Pyre.Actions.PRReviewerTest do
 
     params = %{
       feature_description: "Build a products page",
-      requirements: "Requirements",
-      design: "Design",
       architecture_plan: "Architecture plan",
       implementation_summary: "Implementation summary",
       run_dir: run_dir

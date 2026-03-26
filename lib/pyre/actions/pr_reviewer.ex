@@ -12,8 +12,6 @@ defmodule Pyre.Actions.PRReviewer do
     description: "Reviews complete PR and posts GitHub review comment",
     schema: [
       feature_description: [type: :string, required: true],
-      requirements: [type: :string, required: true],
-      design: [type: :string, required: true],
       architecture_plan: [type: :string, required: true],
       implementation_summary: [type: :string, required: true],
       run_dir: [type: :string, required: true],
@@ -36,8 +34,6 @@ defmodule Pyre.Actions.PRReviewer do
 
       artifacts_content =
         Helpers.assemble_artifacts([
-          {"01_requirements.md", params.requirements},
-          {"02_design_spec.md", params.design},
           {"03_architecture_plan.md", params.architecture_plan},
           {"06_implementation_summary.md", params.implementation_summary}
         ])

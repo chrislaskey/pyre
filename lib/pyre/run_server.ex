@@ -174,7 +174,7 @@ defmodule Pyre.RunServer do
       |> Keyword.get(:skipped_stages, [])
       |> MapSet.new()
 
-    workflow = Keyword.get(opts, :workflow, :iterative_build)
+    workflow = Keyword.get(opts, :workflow, :feature)
 
     interactive =
       case Keyword.fetch(opts, :interactive_stages) do
@@ -481,7 +481,7 @@ defmodule Pyre.RunServer do
         message =~ ~r/Stage: code_reviewer/ -> :reviewing
         message =~ ~r/Stage: shipper/ -> :shipping
         message =~ ~r/Stage: software_architect/ -> :architecting
-        message =~ ~r/Stage: branch_setup/ -> :branch_setup
+        message =~ ~r/Stage: pr_setup/ -> :pr_setup
         message =~ ~r/Stage: software_engineer/ -> :engineering
         message =~ ~r/Stage: pr_reviewer/ -> :reviewing
         true -> nil
@@ -496,18 +496,23 @@ defmodule Pyre.RunServer do
   end
 
   defp flow_module(:chat), do: Pyre.Flows.Chat
-  defp flow_module(:iterative_build), do: Pyre.Flows.IterativeBuild
-  defp flow_module(_), do: Pyre.Flows.FeatureBuild
+  defp flow_module(:feature), do: Pyre.Flows.Feature
+  defp flow_module(:code_review), do: Pyre.Flows.CodeReview
+  defp flow_module(:overnight_run), do: Pyre.Flows.OvernightRun
 
   defp workflow_stages(:chat) do
     [:generalist]
   end
 
-  defp workflow_stages(:iterative_build) do
-    [:planning, :designing, :architecting, :branch_setup, :engineering, :reviewing]
+  defp workflow_stages(:feature) do
+    [:architecting, :pr_setup, :engineering]
   end
 
-  defp workflow_stages(_) do
+  defp workflow_stages(:code_review) do
+    [:reviewing]
+  end
+
+  defp workflow_stages(:overnight_run) do
     [:planning, :designing, :implementing, :testing, :reviewing, :shipping]
   end
 

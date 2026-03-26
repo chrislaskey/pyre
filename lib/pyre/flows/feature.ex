@@ -1,18 +1,19 @@
-defmodule Pyre.Flows.FeatureBuild do
+defmodule Pyre.Flows.Feature do
   @moduledoc """
-  Feature-building multi-agent flow.
+  Feature build flow.
 
-  Orchestrates six agent roles through a sequential pipeline:
+  Orchestrates three agent roles through a sequential pipeline:
 
-      planning -> designing -> implementing -> testing -> reviewing -> shipping -> complete
+      architecting -> pr_setup -> engineering -> complete
 
-  The reviewing phase can loop back to implementing (up to 3 cycles).
-  On approval, the shipping phase creates a git branch, commits, pushes,
-  and opens a GitHub PR.
+  The Software Architect breaks the feature into small phases with acceptance
+  criteria. PR Setup creates a git branch and GitHub PR. The Software
+  Engineer then implements all phases in a single agentic session, committing
+  per phase.
 
   ## Usage
 
-      Pyre.Flows.FeatureBuild.run("Build a products listing page")
+      Pyre.Flows.Feature.run("Build a products listing page")
 
   ## Options
 
@@ -22,34 +23,30 @@ defmodule Pyre.Flows.FeatureBuild do
     * `:streaming` -- Stream LLM output token-by-token. Default `true`.
     * `:verbose` -- Print diagnostic information. Default `false`.
     * `:project_dir` -- Working directory for the agents. Default `"."`.
-    * `:allowed_paths` -- Additional directories agents can read/write. Useful for
-      monorepos where agents need access to sibling apps. Accepts a list of absolute
-      paths. Also configurable via `PYRE_ALLOWED_PATHS` env var (comma-separated)
-      or `config :pyre, :allowed_paths`.
+    * `:allowed_paths` -- Additional directories agents can read/write.
     * `:output_fn` -- Function called with each streaming token. Default `&IO.write/1`.
     * `:log_fn` -- Function called with status/progress messages. Default `&IO.puts/1`.
     * `:github` -- GitHub repo config map with `:owner`, `:repo`, `:token`, and
-      optional `:base_branch`. Required for the shipping phase to create PRs.
-      Typically set via `config :pyre, :github` in `runtime.exs`.
+      optional `:base_branch`. Required for PR setup.
   """
 
-  alias Pyre.Actions.{ProductManager, Designer, Programmer, TestWriter, QAReviewer, Shipper}
+  alias Pyre.Actions.{
+    SoftwareArchitect,
+    PRSetup,
+    SoftwareEngineer
+  }
+
   alias Pyre.Plugins.Artifact
 
-  @max_review_cycles 3
-
   @transitions %{
-    planning: [:designing],
-    designing: [:implementing],
-    implementing: [:testing],
-    testing: [:reviewing],
-    reviewing: [:implementing, :shipping, :complete],
-    shipping: [:complete],
+    architecting: [:pr_setup],
+    pr_setup: [:engineering],
+    engineering: [:complete],
     complete: []
   }
 
   @doc """
-  Runs the complete feature-building pipeline.
+  Runs the feature build pipeline.
   """
   @spec run(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(feature_description, opts \\ []) do
@@ -93,19 +90,17 @@ defmodule Pyre.Flows.FeatureBuild do
       context.log_fn.("Run directory: #{run_dir}")
 
       state = %{
-        phase: :planning,
+        phase: :architecting,
         feature_description: feature_description,
         run_dir: run_dir,
         working_dir: working_dir,
         attachments: attachments,
-        requirements: nil,
-        design: nil,
-        implementation: nil,
-        tests: nil,
-        verdict: nil,
-        verdict_text: nil,
-        review_cycle: 1,
-        shipping_summary: nil
+        architecture_plan: nil,
+        pr_setup: nil,
+        branch_name: nil,
+        pr_url: nil,
+        pr_number: nil,
+        implementation_summary: nil
       }
 
       drive(state, context)
@@ -116,108 +111,41 @@ defmodule Pyre.Flows.FeatureBuild do
     {:ok, state}
   end
 
-  defp drive(%{phase: :planning} = state, context) do
+  defp drive(%{phase: :architecting} = state, context) do
     with {:ok, result} <-
-           run_action(ProductManager, :product_manager, state, context, %{
+           run_action(SoftwareArchitect, :software_architect, state, context, %{
              feature_description: state.feature_description,
              run_dir: state.run_dir,
              attachments: state.attachments
            }) do
       state
       |> Map.merge(result)
-      |> advance_phase(:designing)
+      |> advance_phase(:pr_setup)
       |> drive(context)
     end
   end
 
-  defp drive(%{phase: :designing} = state, context) do
+  defp drive(%{phase: :pr_setup} = state, context) do
     with {:ok, result} <-
-           run_action(Designer, :designer, state, context, %{
+           run_action(PRSetup, :pr_setup, state, context, %{
              feature_description: state.feature_description,
-             requirements: state.requirements,
+             architecture_plan: state.architecture_plan,
              run_dir: state.run_dir,
              attachments: state.attachments
            }) do
       state
       |> Map.merge(result)
-      |> advance_phase(:implementing)
+      |> advance_phase(:engineering)
       |> drive(context)
     end
   end
 
-  defp drive(%{phase: :implementing} = state, context) do
-    params = %{
-      feature_description: state.feature_description,
-      requirements: state.requirements,
-      design: state.design,
-      run_dir: state.run_dir,
-      review_cycle: state.review_cycle,
-      attachments: state.attachments
-    }
-
-    params =
-      if state.verdict_text,
-        do: Map.put(params, :previous_verdict, state.verdict_text),
-        else: params
-
-    with {:ok, result} <- run_action(Programmer, :programmer, state, context, params) do
-      state
-      |> Map.merge(result)
-      |> advance_phase(:testing)
-      |> drive(context)
-    end
-  end
-
-  defp drive(%{phase: :testing} = state, context) do
-    params = %{
-      feature_description: state.feature_description,
-      requirements: state.requirements,
-      design: state.design,
-      implementation: state.implementation,
-      run_dir: state.run_dir,
-      review_cycle: state.review_cycle,
-      attachments: state.attachments
-    }
-
-    params =
-      if state.verdict_text,
-        do: Map.put(params, :previous_verdict, state.verdict_text),
-        else: params
-
-    with {:ok, result} <- run_action(TestWriter, :test_writer, state, context, params) do
-      state
-      |> Map.merge(result)
-      |> advance_phase(:reviewing)
-      |> drive(context)
-    end
-  end
-
-  defp drive(%{phase: :reviewing} = state, context) do
+  defp drive(%{phase: :engineering} = state, context) do
     with {:ok, result} <-
-           run_action(QAReviewer, :code_reviewer, state, context, %{
+           run_action(SoftwareEngineer, :software_engineer, state, context, %{
              feature_description: state.feature_description,
-             requirements: state.requirements,
-             design: state.design,
-             implementation: state.implementation,
-             tests: state.tests,
-             run_dir: state.run_dir,
-             review_cycle: state.review_cycle,
-             attachments: state.attachments
-           }) do
-      state = Map.merge(state, result)
-      handle_verdict(state, context)
-    end
-  end
-
-  defp drive(%{phase: :shipping} = state, context) do
-    with {:ok, result} <-
-           run_action(Shipper, :shipper, state, context, %{
-             feature_description: state.feature_description,
-             requirements: state.requirements,
-             design: state.design,
-             implementation: state.implementation,
-             tests: state.tests,
-             verdict_text: state.verdict_text,
+             architecture_plan: state.architecture_plan,
+             pr_setup: state.pr_setup,
              run_dir: state.run_dir,
              attachments: state.attachments
            }) do
@@ -228,68 +156,25 @@ defmodule Pyre.Flows.FeatureBuild do
     end
   end
 
-  defp handle_verdict(%{verdict: :approve, review_cycle: cycle} = state, context) do
-    context.log_fn.("Review: APPROVED (cycle #{cycle})")
-    state |> advance_phase(:shipping) |> drive(context)
-  end
-
-  defp handle_verdict(%{verdict: nil} = state, context) do
-    # Dry-run mode: no verdict was produced, advance to shipping
-    state |> advance_phase(:shipping) |> drive(context)
-  end
-
-  defp handle_verdict(%{verdict: :reject, review_cycle: cycle} = state, context)
-       when cycle >= @max_review_cycles do
-    context.log_fn.("Max review cycles (#{@max_review_cycles}) reached. Stopping.")
-    state |> advance_phase(:complete) |> drive(context)
-  end
-
-  defp handle_verdict(%{verdict: :reject, review_cycle: cycle} = state, context) do
-    context.log_fn.("Review: REJECTED (cycle #{cycle}), starting rework...")
-
-    state
-    |> Map.put(:review_cycle, cycle + 1)
-    |> advance_phase(:implementing)
-    |> drive(context)
-  end
+  # --- Stage orchestration helpers ---
 
   @stage_to_phase %{
-    product_manager: :planning,
-    designer: :designing,
-    programmer: :implementing,
-    test_writer: :testing,
-    code_reviewer: :reviewing,
-    shipper: :shipping
+    software_architect: :architecting,
+    pr_setup: :pr_setup,
+    software_engineer: :engineering
   }
 
   @stage_fallback_field %{
-    product_manager: :requirements,
-    designer: :design,
-    programmer: :implementation,
-    test_writer: :tests,
-    code_reviewer: {:verdict, :verdict_text},
-    shipper: :shipping_summary
-  }
-
-  @stage_model_tier %{
-    product_manager: :standard,
-    designer: :standard,
-    programmer: :advanced,
-    test_writer: :standard,
-    code_reviewer: :advanced,
-    shipper: :standard
+    software_architect: :architecture_plan,
+    pr_setup: :pr_setup,
+    software_engineer: :implementation_summary
   }
 
   # Maps stage name to {result_field, artifact_base} for the finalize-on-continue call.
-  # nil means the stage has a complex return type and finalize is skipped — the
-  # conversation still works, the artifact just isn't rewritten.
   @stage_artifact_info %{
-    product_manager: {:requirements, "01_requirements"},
-    designer: {:design, "02_design_spec"},
-    programmer: nil,
-    test_writer: nil,
-    code_reviewer: nil,
-    shipper: nil
+    software_architect: {:architecture_plan, "03_architecture_plan"},
+    pr_setup: {:pr_setup, "04_pr_setup"},
+    software_engineer: {:implementation_summary, "06_implementation_summary"}
   }
 
   @finalize_prompt """
@@ -298,6 +183,12 @@ defmodule Pyre.Flows.FeatureBuild do
   the same sections and headings — but update the content to reflect everything
   we discussed and agreed on.\
   """
+
+  @stage_model_tier %{
+    software_architect: :advanced,
+    pr_setup: :standard,
+    software_engineer: :standard
+  }
 
   defp run_action(action_module, stage_name, state, context, params) do
     if stage_skipped?(stage_name, context) do
@@ -446,16 +337,8 @@ defmodule Pyre.Flows.FeatureBuild do
     end
   end
 
-  defp stage_fallback_text(:product_manager, state) do
-    state.feature_description
-  end
-
   defp stage_fallback_text(stage_name, _state) do
     Pyre.Plugins.BestPractices.fallback_text(stage_name)
-  end
-
-  defp fallback_result(:code_reviewer, text) do
-    %{verdict: :approve, verdict_text: text}
   end
 
   defp fallback_result(stage_name, text) do
@@ -475,7 +358,6 @@ defmodule Pyre.Flows.FeatureBuild do
   end
 
   defp model_short_name(model) when is_binary(model) do
-    # "anthropic:claude-sonnet-4-20250514" → "claude-sonnet-4"
     model
     |> String.replace(~r/^[^:]+:/, "")
     |> String.replace(~r/-\d{8}$/, "")

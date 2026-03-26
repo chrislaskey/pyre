@@ -1,4 +1,4 @@
-defmodule Pyre.Actions.BranchSetup do
+defmodule Pyre.Actions.PRSetup do
   @moduledoc """
   Creates a git branch, commits planning artifacts, pushes, and opens a GitHub PR.
 
@@ -8,12 +8,10 @@ defmodule Pyre.Actions.BranchSetup do
   """
 
   use Jido.Action,
-    name: "branch_setup",
+    name: "pr_setup",
     description: "Creates branch, commits planning artifacts, pushes, and opens GitHub PR",
     schema: [
       feature_description: [type: :string, required: true],
-      requirements: [type: :string, required: true],
-      design: [type: :string, required: true],
       architecture_plan: [type: :string, required: true],
       run_dir: [type: :string, required: true]
     ]
@@ -22,7 +20,7 @@ defmodule Pyre.Actions.BranchSetup do
   alias Pyre.Plugins.{Artifact, Persona}
 
   @persona :shipper
-  @artifact_base "04_branch_setup"
+  @artifact_base "04_pr_setup"
   @model_tier :standard
 
   @impl true
@@ -34,8 +32,6 @@ defmodule Pyre.Actions.BranchSetup do
 
       artifacts_content =
         Helpers.assemble_artifacts([
-          {"01_requirements.md", params.requirements},
-          {"02_design_spec.md", params.design},
           {"03_architecture_plan.md", params.architecture_plan}
         ])
 
@@ -56,13 +52,13 @@ defmodule Pyre.Actions.BranchSetup do
           cond do
             Map.get(context, :dry_run, false) ->
               :ok = Artifact.write(params.run_dir, @artifact_base, text)
-              {:ok, %{branch_setup: text, branch_name: shipping_plan.branch_name}}
+              {:ok, %{pr_setup: text, branch_name: shipping_plan.branch_name}}
 
             not git_repo?(working_dir) ->
               log_fn = Map.get(context, :log_fn, &IO.puts/1)
               log_fn.("Not a git repository — skipping git operations")
               :ok = Artifact.write(params.run_dir, @artifact_base, text)
-              {:ok, %{branch_setup: text, branch_name: shipping_plan.branch_name}}
+              {:ok, %{pr_setup: text, branch_name: shipping_plan.branch_name}}
 
             not github_configured?(context) ->
               {:error,
@@ -70,14 +66,14 @@ defmodule Pyre.Actions.BranchSetup do
                 "GitHub is not configured. See the Pyre README for details."}}
 
             true ->
-              case execute_branch_setup(shipping_plan, working_dir, context) do
+              case execute_pr_setup(shipping_plan, working_dir, context) do
                 {:ok, result} ->
                   summary = build_summary(shipping_plan, result)
                   :ok = Artifact.write(params.run_dir, @artifact_base, summary)
 
                   {:ok,
                    %{
-                     branch_setup: summary,
+                     pr_setup: summary,
                      branch_name: shipping_plan.branch_name,
                      pr_url: result[:pr_url],
                      pr_number: result[:pr_number]
@@ -94,7 +90,7 @@ defmodule Pyre.Actions.BranchSetup do
     end
   end
 
-  defp execute_branch_setup(plan, working_dir, context) do
+  defp execute_pr_setup(plan, working_dir, context) do
     log_fn = Map.get(context, :log_fn, &IO.puts/1)
 
     with :ok <- update_gitignore(working_dir, log_fn),
@@ -277,12 +273,12 @@ defmodule Pyre.Actions.BranchSetup do
       end
 
     """
-    # Branch Setup Summary
+    # PR Setup Summary
 
     ## Git Operations
 
     - **Branch**: `#{plan.branch_name}`
-    - **Initial Commit**: chore: initialize iterative build with planning artifacts
+    - **Initial Commit**: chore: planning artifacts
     #{pr_section}
     #{pr_number_section}
 

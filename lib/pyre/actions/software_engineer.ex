@@ -12,10 +12,8 @@ defmodule Pyre.Actions.SoftwareEngineer do
     description: "Implements all phases from the architecture plan with per-phase commits",
     schema: [
       feature_description: [type: :string, required: true],
-      requirements: [type: :string, required: true],
-      design: [type: :string, required: true],
       architecture_plan: [type: :string, required: true],
-      branch_setup: [type: :string, required: true],
+      pr_setup: [type: :string, required: true],
       run_dir: [type: :string, required: true]
     ]
 
@@ -35,10 +33,8 @@ defmodule Pyre.Actions.SoftwareEngineer do
 
       artifacts_content =
         Helpers.assemble_artifacts([
-          {"01_requirements.md", params.requirements},
-          {"02_design_spec.md", params.design},
           {"03_architecture_plan.md", params.architecture_plan},
-          {"04_branch_setup.md", params.branch_setup}
+          {"04_pr_setup.md", params.pr_setup}
         ])
 
       user_msg =

@@ -11,8 +11,6 @@ defmodule Pyre.Actions.SoftwareArchitect do
     description: "Decomposes feature into multi-phase implementation plan",
     schema: [
       feature_description: [type: :string, required: true],
-      requirements: [type: :string, required: true],
-      design: [type: :string, required: true],
       run_dir: [type: :string, required: true]
     ]
 
@@ -30,11 +28,7 @@ defmodule Pyre.Actions.SoftwareArchitect do
     with {:ok, system_msg} <- Persona.system_message(@persona) do
       attachments = Map.get(params, :attachments, [])
 
-      artifacts_content =
-        Helpers.assemble_artifacts([
-          {"01_requirements.md", params.requirements},
-          {"02_design_spec.md", params.design}
-        ])
+      artifacts_content = ""
 
       user_msg =
         Persona.user_message(
