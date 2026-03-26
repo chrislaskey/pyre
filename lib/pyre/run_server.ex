@@ -174,19 +174,29 @@ defmodule Pyre.RunServer do
       |> Keyword.get(:skipped_stages, [])
       |> MapSet.new()
 
-    interactive =
-      opts
-      |> Keyword.get(:interactive_stages, [])
-      |> MapSet.new()
-
     workflow = Keyword.get(opts, :workflow, :iterative_build)
+
+    interactive =
+      case Keyword.fetch(opts, :interactive_stages) do
+        {:ok, stages} ->
+          MapSet.new(stages)
+
+        :error ->
+          flow_mod = flow_module(workflow)
+
+          if function_exported?(flow_mod, :default_interactive_stages, 0),
+            do: flow_mod.default_interactive_stages() |> MapSet.new(),
+            else: MapSet.new()
+      end
     llm = Keyword.get(opts, :llm, Pyre.LLM.default())
     backend = if llm == Pyre.LLM.ClaudeCLI, do: :claude_cli, else: :other
+
+    initial_phase = hd(workflow_stages(workflow))
 
     state = %{
       id: id,
       status: :running,
-      phase: :planning,
+      phase: initial_phase,
       workflow: workflow,
       backend: backend,
       feature: Keyword.get(opts, :feature),
@@ -463,6 +473,7 @@ defmodule Pyre.RunServer do
   defp maybe_update_phase(state, message) do
     new_phase =
       cond do
+        message =~ ~r/Stage: generalist/ -> :generalist
         message =~ ~r/Stage: product_manager/ -> :planning
         message =~ ~r/Stage: designer/ -> :designing
         message =~ ~r/Stage: programmer/ -> :implementing
@@ -484,8 +495,13 @@ defmodule Pyre.RunServer do
     end
   end
 
+  defp flow_module(:chat), do: Pyre.Flows.Chat
   defp flow_module(:iterative_build), do: Pyre.Flows.IterativeBuild
   defp flow_module(_), do: Pyre.Flows.FeatureBuild
+
+  defp workflow_stages(:chat) do
+    [:generalist]
+  end
 
   defp workflow_stages(:iterative_build) do
     [:planning, :designing, :architecting, :branch_setup, :engineering, :reviewing]

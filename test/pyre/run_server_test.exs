@@ -501,6 +501,36 @@ defmodule Pyre.RunServerTest do
     # so we only assert the broadcast here, not flow completion.
   end
 
+  test "chat workflow uses default interactive stages", %{tmp_dir: tmp_dir} do
+    AgentMock.setup([
+      "Generalist output."
+    ])
+
+    {:ok, id} =
+      Pyre.RunServer.start_run("Help me debug this",
+        workflow: :chat,
+        llm: AgentMock,
+        streaming: false,
+        project_dir: tmp_dir
+      )
+
+    {:ok, state} = Pyre.RunServer.get_state(id)
+    assert state.workflow == :chat
+    # Chat flow defaults to interactive generalist stage
+    assert MapSet.member?(state.interactive_stages, :generalist)
+
+    # The run will be waiting for input since generalist is interactive by default.
+    # Continue to let it finish.
+    assert wait_for_waiting(id), "Expected chat run to reach waiting_for_input"
+    :ok = Pyre.RunServer.continue_stage(id)
+
+    wait_for_status(id, :complete)
+
+    {:ok, final_state} = Pyre.RunServer.get_state(id)
+    assert final_state.status == :complete
+    assert final_state.phase == :generalist
+  end
+
   # --- Helpers ---
 
   defp wait_for_status(id, expected_status, timeout \\ 15_000) do
