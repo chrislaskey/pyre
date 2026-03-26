@@ -497,8 +497,8 @@ defmodule Pyre.RunServerTest do
 
     assert_receive {:pyre_interactive_stages, ^id, stages}, 1_000
     assert MapSet.member?(stages, :designing)
-
-    wait_for_status(id, :complete)
+    # The run may block at designing (now interactive) waiting for user input,
+    # so we only assert the broadcast here, not flow completion.
   end
 
   # --- Helpers ---

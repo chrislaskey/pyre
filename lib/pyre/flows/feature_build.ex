@@ -405,7 +405,9 @@ defmodule Pyre.Flows.FeatureBuild do
     ]
 
     case context.llm.chat(model, messages, [], opts) do
-      {:ok, finalized_text} ->
+      {:ok, response} ->
+        finalized_text = response_to_text(response)
+
         case Map.get(@stage_artifact_info, stage_name) do
           nil ->
             {:ok, result}
@@ -419,6 +421,9 @@ defmodule Pyre.Flows.FeatureBuild do
         error
     end
   end
+
+  defp response_to_text(%ReqLLM.Response{} = response), do: ReqLLM.Response.text(response) || ""
+  defp response_to_text(text) when is_binary(text), do: text
 
   defp stage_skipped?(stage_name, context) do
     phase = Map.get(@stage_to_phase, stage_name)
