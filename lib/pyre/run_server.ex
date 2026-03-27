@@ -189,7 +189,13 @@ defmodule Pyre.RunServer do
             else: MapSet.new()
       end
     llm = Keyword.get(opts, :llm, Pyre.LLM.default())
-    backend = if llm == Pyre.LLM.ClaudeCLI, do: :claude_cli, else: :other
+
+    backend =
+      cond do
+        llm == Pyre.LLM.ClaudeCLI -> :claude_cli
+        llm == Pyre.LLM.CursorCLI -> :cursor_cli
+        true -> :other
+      end
 
     initial_phase = hd(workflow_stages(workflow))
 
