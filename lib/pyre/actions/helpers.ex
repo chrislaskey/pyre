@@ -34,28 +34,64 @@ defmodule Pyre.Actions.Helpers do
     streaming? = Map.get(context, :streaming, true)
     tools = Keyword.get(opts, :tools, [])
 
-    cond do
-      tools != [] and manages_tool_loop?(llm) ->
-        llm.chat(model, messages, tools, cli_opts(context))
+    call_type =
+      cond do
+        tools != [] and manages_tool_loop?(llm) -> :chat
+        tools != [] -> :agentic_loop
+        streaming? -> :stream
+        true -> :generate
+      end
 
-      tools != [] ->
-        output_fn = Map.get(context, :output_fn, &IO.write/1)
-        log_fn = Map.get(context, :log_fn, &IO.puts/1)
-        verbose? = Map.get(context, :verbose, false)
+    started_at = System.monotonic_time(:millisecond)
 
-        Pyre.Tools.AgenticLoop.run(llm, model, messages, tools,
-          streaming: streaming?,
-          output_fn: output_fn,
-          log_fn: log_fn,
-          verbose: verbose?
-        )
+    result =
+      cond do
+        call_type == :chat ->
+          llm.chat(model, messages, tools, cli_opts(context))
 
-      streaming? ->
-        output_fn = Map.get(context, :output_fn, &IO.write/1)
-        llm.stream(model, messages, output_fn: output_fn)
+        call_type == :agentic_loop ->
+          output_fn = Map.get(context, :output_fn, &IO.write/1)
+          log_fn = Map.get(context, :log_fn, &IO.puts/1)
+          verbose? = Map.get(context, :verbose, false)
 
-      true ->
-        llm.generate(model, messages, [])
+          Pyre.Tools.AgenticLoop.run(llm, model, messages, tools,
+            streaming: streaming?,
+            output_fn: output_fn,
+            log_fn: log_fn,
+            verbose: verbose?
+          )
+
+        call_type == :stream ->
+          output_fn = Map.get(context, :output_fn, &IO.write/1)
+          llm.stream(model, messages, output_fn: output_fn)
+
+        true ->
+          llm.generate(model, messages, [])
+      end
+
+    elapsed = System.monotonic_time(:millisecond) - started_at
+
+    case result do
+      {:ok, _} = ok ->
+        Pyre.Config.notify(:after_llm_call_complete, %Pyre.Events.LLMCallCompleted{
+          backend: llm,
+          model: model,
+          call_type: call_type,
+          elapsed_ms: elapsed
+        })
+
+        ok
+
+      {:error, reason} = error ->
+        Pyre.Config.notify(:after_llm_call_error, %Pyre.Events.LLMCallError{
+          backend: llm,
+          model: model,
+          error: reason,
+          call_type: call_type,
+          elapsed_ms: elapsed
+        })
+
+        error
     end
   end
 

@@ -92,7 +92,42 @@ defmodule Pyre.Flows.Chat do
         generalist_output: nil
       }
 
-      drive(state, context)
+      flow_started_at = System.monotonic_time(:millisecond)
+
+      Pyre.Config.notify(:after_flow_start, %Pyre.Events.FlowStarted{
+        flow_module: __MODULE__,
+        description: feature_description,
+        run_dir: run_dir,
+        working_dir: working_dir
+      })
+
+      case drive(state, context) do
+        {:ok, final_state} ->
+          elapsed = System.monotonic_time(:millisecond) - flow_started_at
+
+          Pyre.Config.notify(:after_flow_complete, %Pyre.Events.FlowCompleted{
+            flow_module: __MODULE__,
+            description: feature_description,
+            run_dir: run_dir,
+            result: final_state,
+            elapsed_ms: elapsed
+          })
+
+          {:ok, final_state}
+
+        {:error, reason} = error ->
+          elapsed = System.monotonic_time(:millisecond) - flow_started_at
+
+          Pyre.Config.notify(:after_flow_error, %Pyre.Events.FlowError{
+            flow_module: __MODULE__,
+            description: feature_description,
+            run_dir: run_dir,
+            error: reason,
+            elapsed_ms: elapsed
+          })
+
+          error
+      end
     end
   end
 
@@ -164,21 +199,51 @@ defmodule Pyre.Flows.Chat do
         phase = Map.get(@stage_to_phase, stage_name)
         session_id = get_in(context, [:session_ids, phase])
         action_context = if session_id, do: Map.put(context, :session_id, session_id), else: context
+
+        action_started_at = System.monotonic_time(:millisecond)
+
+        Pyre.Config.notify(:after_action_start, %Pyre.Events.ActionStarted{
+          action_module: action_module,
+          stage_name: stage_name,
+          model: model,
+          params: params
+        })
+
         result = action_module.run(params, action_context)
         elapsed = System.monotonic_time(:second) - started_at
 
         case result do
           {:ok, action_result} ->
+            action_elapsed = System.monotonic_time(:millisecond) - action_started_at
+
             context.log_fn.(
               "--- Completed: #{stage_name} (#{format_duration(elapsed)}, #{model_label}) ---"
             )
 
+            Pyre.Config.notify(:after_action_complete, %Pyre.Events.ActionCompleted{
+              action_module: action_module,
+              stage_name: stage_name,
+              result: action_result,
+              model: model,
+              elapsed_ms: action_elapsed
+            })
+
             maybe_interactive_loop(stage_name, model, action_result, state, context)
 
-          {:error, _} = error ->
+          {:error, reason} = error ->
+            action_elapsed = System.monotonic_time(:millisecond) - action_started_at
+
             context.log_fn.(
               "--- Failed: #{stage_name} (#{format_duration(elapsed)}, #{model_label}) ---"
             )
+
+            Pyre.Config.notify(:after_action_error, %Pyre.Events.ActionError{
+              action_module: action_module,
+              stage_name: stage_name,
+              error: reason,
+              model: model,
+              elapsed_ms: action_elapsed
+            })
 
             error
         end
