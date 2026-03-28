@@ -49,7 +49,7 @@ defmodule Pyre.Flows.Feature do
   Returns the stages that are interactive by default for this flow.
   """
   @spec default_interactive_stages() :: [atom()]
-  def default_interactive_stages, do: []
+  def default_interactive_stages, do: [:architecting, :engineering]
 
   @doc """
   Runs the feature build pipeline.

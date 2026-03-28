@@ -420,15 +420,18 @@ defmodule Pyre.RunServerTest do
     # This mock returns responses in sequence. After a reply is sent the flow
     # calls chat/4 again with --resume, which consumes the next response.
     AgentMock.setup([
-      # architecting (interactive) — initial call
+      # architecting (interactive by default) — initial call
       "Architecture plan.",
       # architecting — resume call with user reply
       "Updated architecture plan with error handling.",
       # architecting — finalize call
       "Final architecture plan.",
-      # remaining stages (non-interactive)
+      # pr_setup (non-interactive)
       "## Branch Name\n\nfeature/page\n\n## PR Title\n\nAdd page\n\n## PR Body\n\nAdds page.",
-      "Implementation summary."
+      # engineering (interactive by default) — initial call
+      "Implementation summary.",
+      # engineering — finalize call
+      "Final implementation summary."
     ])
 
     Phoenix.PubSub.subscribe(pubsub, "pyre:runs:#{:waiting_test}")
@@ -441,12 +444,10 @@ defmodule Pyre.RunServerTest do
         project_dir: tmp_dir
       )
 
-    # Enable interactive for architecting phase
-    :ok = Pyre.RunServer.toggle_interactive_stage(id, :architecting)
-
+    # Feature flow defaults to interactive architecting + engineering stages
     Phoenix.PubSub.subscribe(pubsub, "pyre:runs:#{id}")
 
-    # Wait for the flow to reach waiting_for_input
+    # Wait for the flow to reach waiting_for_input (architecting)
     assert wait_for_waiting(id), "Expected run to reach waiting_for_input state"
 
     {:ok, state} = Pyre.RunServer.get_state(id)
@@ -456,7 +457,13 @@ defmodule Pyre.RunServerTest do
     :ok = Pyre.RunServer.send_reply(id, "Can you add error states?")
     assert wait_for_waiting(id), "Expected run to re-enter waiting after reply"
 
-    # Continue — flow should finalize and advance
+    # Continue — flow should finalize and advance past architecting
+    :ok = Pyre.RunServer.continue_stage(id)
+
+    # Engineering is also interactive — wait for it
+    assert wait_for_waiting(id), "Expected engineering to reach waiting_for_input"
+
+    # Continue past engineering
     :ok = Pyre.RunServer.continue_stage(id)
 
     wait_for_status(id, :complete)
