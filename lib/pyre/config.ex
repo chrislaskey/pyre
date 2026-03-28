@@ -68,7 +68,7 @@ defmodule Pyre.Config do
   Falls back to `Pyre.Config` (default implementations) if none is configured.
   """
   def get_module do
-    Application.get_env(:pyre, :config, __MODULE__)
+    Application.get_env(:pyre, :config) || __MODULE__
   end
 
   @doc """
