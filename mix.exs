@@ -2,7 +2,7 @@ defmodule Pyre.MixProject do
   use Mix.Project
 
   @version "0.3.0"
-  @source_url "https://github.com/chrislaskey/pyre"
+  @source_url "https://github.com/chrislaskey/pyre_core"
 
   def project do
     [
@@ -26,7 +26,7 @@ defmodule Pyre.MixProject do
   end
 
   defp description do
-    "Multi-agent LLM framework for rapid Phoenix development."
+    "Core module for Pyre, a software development framework (github.com/chrislaskey/pyre)"
   end
 
   defp package do
