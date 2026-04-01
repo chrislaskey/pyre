@@ -23,14 +23,6 @@ def deps do
 end
 ```
 
-**Phoenix 1.8+**: Pyre's transitive dependency chain includes `gettext ~> 0.26`
-(via `jido -> sched_ex -> timex`), which conflicts with Phoenix 1.8's
-`gettext ~> 1.0`. Add an override in your app's deps to resolve this:
-
-```elixir
-{:gettext, "~> 1.0", override: true}
-```
-
 Then run the installer to copy persona files and set up the runs directory:
 
 ```bash
