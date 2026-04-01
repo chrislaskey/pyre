@@ -36,15 +36,32 @@ defmodule Pyre.GitHub do
   @doc """
   Resolves GitHub configuration for a given owner/repo pair.
 
-  Looks up the `:github` application config for a repository entry whose
-  URL matches the given owner and repo.
+  When `installation_id` is provided and GitHub App is configured,
+  uses App authentication. Otherwise falls back to PAT-based auth.
 
   Returns `{:ok, %{token: token, base_branch: base_branch}}` or
   `{:error, :token_not_set}`.
   """
-  @spec resolve_repo_config(String.t(), String.t()) ::
-          {:ok, %{token: String.t(), base_branch: String.t()}} | {:error, :token_not_set}
-  def resolve_repo_config(owner, repo) do
+  @spec resolve_repo_config(String.t(), String.t(), keyword()) ::
+          {:ok, %{token: String.t(), base_branch: String.t()}} | {:error, term()}
+  def resolve_repo_config(owner, repo, opts \\ []) do
+    installation_id = opts[:installation_id]
+
+    if Pyre.GitHub.App.configured?() and installation_id do
+      case Pyre.GitHub.App.installation_token(installation_id) do
+        {:ok, token} ->
+          base_branch = opts[:base_branch] || "main"
+          {:ok, %{token: token, base_branch: base_branch}}
+
+        {:error, _} = error ->
+          error
+      end
+    else
+      resolve_pat_config(owner, repo)
+    end
+  end
+
+  defp resolve_pat_config(owner, repo) do
     github_config = Application.get_env(:pyre, :github, [])
     repos = Keyword.get(github_config, :repositories, [])
 
@@ -355,5 +372,103 @@ defmodule Pyre.GitHub do
       [owner, repo] when owner != "" and repo != "" -> {:ok, {owner, repo}}
       _ -> {:error, :invalid_url}
     end
+  end
+
+  @doc """
+  Fetches pull request metadata from GitHub.
+
+  Returns `{:ok, pr_map}` with title, body, author, branches, and stats.
+  """
+  @spec get_pull_request(String.t(), String.t(), integer(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def get_pull_request(owner, repo, pr_number, token) do
+    unless Code.ensure_loaded?(Req) do
+      {:error, :req_not_available}
+    else
+      case Req.get("#{@base_url}/repos/#{owner}/#{repo}/pulls/#{pr_number}",
+             headers: auth_headers(token)
+           ) do
+        {:ok, %{status: 200, body: body}} ->
+          {:ok,
+           %{
+             title: body["title"],
+             body: body["body"],
+             author: get_in(body, ["user", "login"]),
+             head_branch: get_in(body, ["head", "ref"]),
+             head_sha: get_in(body, ["head", "sha"]),
+             base_branch: get_in(body, ["base", "ref"]),
+             clone_url: get_in(body, ["head", "repo", "clone_url"]),
+             changed_files: body["changed_files"],
+             additions: body["additions"],
+             deletions: body["deletions"]
+           }}
+
+        {:ok, %{status: status, body: body}} ->
+          {:error, {:api_error, status, body["message"]}}
+
+        {:error, reason} ->
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+
+  @doc """
+  Fetches the raw diff for a pull request.
+  """
+  @spec get_pull_request_diff(String.t(), String.t(), integer(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  def get_pull_request_diff(owner, repo, pr_number, token) do
+    unless Code.ensure_loaded?(Req) do
+      {:error, :req_not_available}
+    else
+      case Req.get("#{@base_url}/repos/#{owner}/#{repo}/pulls/#{pr_number}",
+             headers: [
+               {"authorization", "Bearer #{token}"},
+               {"accept", "application/vnd.github.diff"}
+             ]
+           ) do
+        {:ok, %{status: 200, body: diff}} when is_binary(diff) ->
+          {:ok, diff}
+
+        {:ok, %{status: status, body: body}} ->
+          {:error, {:api_error, status, body}}
+
+        {:error, reason} ->
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+
+  @doc """
+  Replies to a specific inline review comment on a pull request.
+  """
+  @spec create_comment_reply(String.t(), String.t(), integer(), integer(), String.t(), String.t()) ::
+          {:ok, %{id: integer()}} | {:error, term()}
+  def create_comment_reply(owner, repo, pr_number, in_reply_to, body, token) do
+    unless Code.ensure_loaded?(Req) do
+      {:error, :req_not_available}
+    else
+      case Req.post("#{@base_url}/repos/#{owner}/#{repo}/pulls/#{pr_number}/comments",
+             json: %{body: body, in_reply_to: in_reply_to},
+             headers: auth_headers(token)
+           ) do
+        {:ok, %{status: 201, body: resp}} ->
+          {:ok, %{id: resp["id"]}}
+
+        {:ok, %{status: status, body: resp}} ->
+          {:error, {:api_error, status, resp["message"]}}
+
+        {:error, reason} ->
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+
+  defp auth_headers(token) do
+    [
+      {"authorization", "Bearer #{token}"},
+      {"accept", "application/vnd.github+json"},
+      {"x-github-api-version", "2022-11-28"}
+    ]
   end
 end

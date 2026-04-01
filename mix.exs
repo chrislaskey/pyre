@@ -51,6 +51,7 @@ defmodule Pyre.MixProject do
       {:igniter, "~> 0.7"},
       {:jido, "~> 2.2"},
       {:jido_ai, "~> 2.1"},
+      {:jose, "~> 1.11"},
       {:req, "~> 0.5", optional: true}
     ]
   end
