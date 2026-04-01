@@ -97,6 +97,8 @@ working directory itself is always included automatically.
 
 #### GitHub integration
 
+##### Personal access token (Shipper agent)
+
 To enable the Shipper agent (creates branches and opens GitHub PRs), configure
 your repository in `config/runtime.exs`:
 
@@ -134,6 +136,16 @@ Pyre.Flows.FeatureBuild.run("Build a feature",
   github: %{owner: "acme", repo: "app", token: token, base_branch: "main"}
 )
 ```
+
+##### GitHub App (webhook-triggered PR reviews)
+
+Pyre also supports a GitHub App integration for `@mention`-triggered PR reviews.
+The webhook handling, mention parsing, and job queue live in
+[PyreWeb](https://github.com/chrislaskey/pyre_web). The core review workflow
+(`Pyre.RemoteReview`) and GitHub API infrastructure (`Pyre.GitHub.App`) remain
+in pyre_core. See the
+[PyreWeb README](https://github.com/chrislaskey/pyre_web?tab=readme-ov-file#github-app-pr-reviews)
+for setup instructions.
 
 #### LLM API Keys
 
