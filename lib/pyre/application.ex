@@ -7,9 +7,7 @@ defmodule Pyre.Application do
     children = [
       {Registry, keys: :unique, name: Pyre.RunRegistry},
       {DynamicSupervisor, name: Pyre.RunSupervisor, strategy: :one_for_one},
-      Pyre.Session.Registry,
-      {Task.Supervisor, name: Pyre.ReviewTaskSupervisor},
-      Pyre.ReviewQueue
+      Pyre.Session.Registry
     ]
 
     opts = [strategy: :one_for_one, name: Pyre.Supervisor]
