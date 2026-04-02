@@ -102,7 +102,7 @@ LLM call complete) to a configurable callback module. Create a module that
 `use Pyre.Config` and override the callbacks you need:
 
 ```elixir
-defmodule MyApp.PyreConfig do
+defmodule MyApp.Pyre.Config do
   use Pyre.Config
 
   @impl true
@@ -120,7 +120,7 @@ Then register it in your config:
 
 ```elixir
 # config/config.exs
-config :pyre, config: MyApp.PyreConfig
+config :pyre, config: MyApp.Pyre.Config
 ```
 
 Any callback not overridden returns `:ok` by default. Exceptions in callbacks
