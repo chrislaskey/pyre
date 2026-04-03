@@ -32,7 +32,7 @@ defmodule Pyre.Actions.ShipperTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
   defp base_params(run_dir) do
@@ -48,11 +48,11 @@ defmodule Pyre.Actions.ShipperTest do
   end
 
   describe "run/2 in dry_run mode" do
-    test "generates shipping plan and writes artifact", %{run_dir: run_dir} do
+    test "generates shipping plan and writes artifact", %{run_dir: run_dir, tmp_dir: tmp_dir} do
       Process.put(:mock_llm_response, @llm_response)
 
       params = base_params(run_dir)
-      context = %{llm: Pyre.LLM.Mock, streaming: false, dry_run: true}
+      context = %{llm: Pyre.LLM.Mock, streaming: false, dry_run: true, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
       assert {:ok, result} = Shipper.run(params, context)
       assert result.shipping_summary =~ "Branch Name"
@@ -72,6 +72,7 @@ defmodule Pyre.Actions.ShipperTest do
         llm: Pyre.LLM.Mock,
         streaming: false,
         working_dir: run_dir,
+        allowed_paths: [run_dir],
         log_fn: &Function.identity/1
       }
 
@@ -81,7 +82,7 @@ defmodule Pyre.Actions.ShipperTest do
   end
 
   describe "run/2 returns error on LLM failure" do
-    test "propagates LLM error", %{run_dir: run_dir} do
+    test "propagates LLM error", %{run_dir: run_dir, tmp_dir: tmp_dir} do
       defmodule FailingShipperLLM do
         @behaviour Pyre.LLM
         def generate(_, _, _ \\ []), do: {:error, :api_error}
@@ -90,7 +91,7 @@ defmodule Pyre.Actions.ShipperTest do
       end
 
       params = base_params(run_dir)
-      context = %{llm: FailingShipperLLM, streaming: false, dry_run: true}
+      context = %{llm: FailingShipperLLM, streaming: false, dry_run: true, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
       assert {:error, :api_error} = Shipper.run(params, context)
     end
@@ -114,6 +115,7 @@ defmodule Pyre.Actions.ShipperTest do
         llm: Pyre.LLM.Mock,
         streaming: false,
         working_dir: git_dir,
+        allowed_paths: [git_dir],
         github: %{},
         log_fn: &Function.identity/1
       }
@@ -124,7 +126,7 @@ defmodule Pyre.Actions.ShipperTest do
   end
 
   describe "run/2 with CLI backend (manages_tool_loop?)" do
-    test "skips tools and routes to generate instead of chat", %{run_dir: run_dir} do
+    test "skips tools and routes to generate instead of chat", %{run_dir: run_dir, tmp_dir: tmp_dir} do
       defmodule CLIShipperBackend do
         @behaviour Pyre.LLM
 
@@ -158,7 +160,7 @@ defmodule Pyre.Actions.ShipperTest do
       end
 
       params = base_params(run_dir)
-      context = %{llm: CLIShipperBackend, streaming: false, dry_run: true}
+      context = %{llm: CLIShipperBackend, streaming: false, dry_run: true, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
       assert {:ok, result} = Shipper.run(params, context)
       assert result.shipping_summary =~ "feature-cli-test-branch"

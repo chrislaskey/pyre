@@ -9,14 +9,14 @@ defmodule Pyre.Actions.ProductManagerTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "generates requirements and writes artifact", %{run_dir: run_dir} do
+  test "generates requirements and writes artifact", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Requirements\n\nProducts page requirements.")
 
     params = %{feature_description: "Build a products page", run_dir: run_dir}
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = ProductManager.run(params, context)
     assert result.requirements =~ "Requirements"
@@ -24,7 +24,7 @@ defmodule Pyre.Actions.ProductManagerTest do
     assert content =~ "Requirements"
   end
 
-  test "returns error when LLM fails", %{run_dir: run_dir} do
+  test "returns error when LLM fails", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     defmodule FailingLLM do
       @behaviour Pyre.LLM
       def generate(_, _, _ \\ []), do: {:error, :api_error}
@@ -33,7 +33,7 @@ defmodule Pyre.Actions.ProductManagerTest do
     end
 
     params = %{feature_description: "Build a products page", run_dir: run_dir}
-    context = %{llm: FailingLLM, streaming: false}
+    context = %{llm: FailingLLM, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:error, :api_error} = ProductManager.run(params, context)
   end
@@ -50,10 +50,10 @@ defmodule Pyre.Actions.DesignerTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "generates design spec from requirements", %{run_dir: run_dir} do
+  test "generates design spec from requirements", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Design Spec\n\nPage layout and components.")
 
     params = %{
@@ -62,7 +62,7 @@ defmodule Pyre.Actions.DesignerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = Designer.run(params, context)
     assert result.design =~ "Design Spec"
@@ -82,10 +82,10 @@ defmodule Pyre.Actions.ProgrammerTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "generates implementation summary", %{run_dir: run_dir} do
+  test "generates implementation summary", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Implementation\n\nCreated LiveView module.")
 
     params = %{
@@ -95,14 +95,14 @@ defmodule Pyre.Actions.ProgrammerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = Programmer.run(params, context)
     assert result.implementation =~ "Implementation"
     assert {:ok, _} = Artifact.read(run_dir, "03_implementation_summary")
   end
 
-  test "writes versioned artifact on cycle 2+", %{run_dir: run_dir} do
+  test "writes versioned artifact on cycle 2+", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Implementation v2\n\nFixed issues.")
 
     params = %{
@@ -114,7 +114,7 @@ defmodule Pyre.Actions.ProgrammerTest do
       previous_verdict: "REJECT\n\nNeeds fixes."
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, _result} = Programmer.run(params, context)
     assert {:ok, _} = Artifact.read(run_dir, "03_implementation_summary_v2")
@@ -132,10 +132,10 @@ defmodule Pyre.Actions.TestWriterTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "generates test summary", %{run_dir: run_dir} do
+  test "generates test summary", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Test Summary\n\nAll tests pass.")
 
     params = %{
@@ -146,14 +146,14 @@ defmodule Pyre.Actions.TestWriterTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = TestWriter.run(params, context)
     assert result.tests =~ "Test Summary"
     assert {:ok, _} = Artifact.read(run_dir, "04_test_summary")
   end
 
-  test "writes versioned artifact on cycle 2+", %{run_dir: run_dir} do
+  test "writes versioned artifact on cycle 2+", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Tests v2\n\nImproved coverage.")
 
     params = %{
@@ -166,7 +166,7 @@ defmodule Pyre.Actions.TestWriterTest do
       previous_verdict: "REJECT\n\nNeed more tests."
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, _result} = TestWriter.run(params, context)
     assert {:ok, _} = Artifact.read(run_dir, "04_test_summary_v2")
@@ -184,10 +184,10 @@ defmodule Pyre.Actions.QAReviewerTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "approves and writes verdict artifact", %{run_dir: run_dir} do
+  test "approves and writes verdict artifact", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "APPROVE\n\nGreat work!")
 
     params = %{
@@ -199,7 +199,7 @@ defmodule Pyre.Actions.QAReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = QAReviewer.run(params, context)
     assert result.verdict == :approve
@@ -207,7 +207,7 @@ defmodule Pyre.Actions.QAReviewerTest do
     assert {:ok, _} = Artifact.read(run_dir, "05_review_verdict")
   end
 
-  test "rejects when verdict is not APPROVE", %{run_dir: run_dir} do
+  test "rejects when verdict is not APPROVE", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "REJECT\n\nNeeds more tests.")
 
     params = %{
@@ -219,7 +219,7 @@ defmodule Pyre.Actions.QAReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = QAReviewer.run(params, context)
     assert result.verdict == :reject
@@ -242,7 +242,7 @@ defmodule Pyre.Actions.QAReviewerTest do
     assert QAReviewer.parse_verdict("\n\nAPPROVE") == :approve
   end
 
-  test "writes versioned verdict artifact on cycle 2+", %{run_dir: run_dir} do
+  test "writes versioned verdict artifact on cycle 2+", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "APPROVE\n\nBetter now.")
 
     params = %{
@@ -255,7 +255,7 @@ defmodule Pyre.Actions.QAReviewerTest do
       review_cycle: 2
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, _result} = QAReviewer.run(params, context)
     assert {:ok, _} = Artifact.read(run_dir, "05_review_verdict_v2")

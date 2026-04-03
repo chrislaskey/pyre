@@ -9,10 +9,10 @@ defmodule Pyre.Actions.SoftwareArchitectTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "generates architecture plan and writes artifact", %{run_dir: run_dir} do
+  test "generates architecture plan and writes artifact", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Architecture Plan\n\n## Phase 1\n\nSetup schema.")
 
     params = %{
@@ -20,7 +20,7 @@ defmodule Pyre.Actions.SoftwareArchitectTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = SoftwareArchitect.run(params, context)
     assert result.architecture_plan =~ "Architecture Plan"
@@ -106,10 +106,10 @@ defmodule Pyre.Actions.SoftwareEngineerTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "generates implementation summary and writes artifact", %{run_dir: run_dir} do
+  test "generates implementation summary and writes artifact", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "# Implementation Summary\n\nAll phases implemented.")
 
     params = %{
@@ -119,7 +119,7 @@ defmodule Pyre.Actions.SoftwareEngineerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = SoftwareEngineer.run(params, context)
     assert result.implementation_summary =~ "Implementation Summary"
@@ -139,10 +139,10 @@ defmodule Pyre.Actions.PRReviewerTest do
     File.mkdir_p!(tmp_dir)
     {:ok, run_dir, _feature_dir} = Artifact.create_run_dir(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{run_dir: run_dir}
+    %{run_dir: run_dir, tmp_dir: tmp_dir}
   end
 
-  test "approves and writes review artifact", %{run_dir: run_dir} do
+  test "approves and writes review artifact", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "APPROVE\n\nGreat work!")
 
     params = %{
@@ -152,7 +152,7 @@ defmodule Pyre.Actions.PRReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, log_fn: fn _ -> :ok end}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, log_fn: fn _ -> :ok end, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = PRReviewer.run(params, context)
     assert result.verdict == :approve
@@ -160,7 +160,7 @@ defmodule Pyre.Actions.PRReviewerTest do
     assert {:ok, _content} = Artifact.read(run_dir, "07_pr_review")
   end
 
-  test "rejects when verdict is not APPROVE", %{run_dir: run_dir} do
+  test "rejects when verdict is not APPROVE", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     Process.put(:mock_llm_response, "REJECT\n\nNeeds more test coverage.")
 
     params = %{
@@ -170,7 +170,7 @@ defmodule Pyre.Actions.PRReviewerTest do
       run_dir: run_dir
     }
 
-    context = %{llm: Pyre.LLM.Mock, streaming: false, log_fn: fn _ -> :ok end}
+    context = %{llm: Pyre.LLM.Mock, streaming: false, log_fn: fn _ -> :ok end, working_dir: tmp_dir, allowed_paths: [tmp_dir]}
 
     assert {:ok, result} = PRReviewer.run(params, context)
     assert result.verdict == :reject

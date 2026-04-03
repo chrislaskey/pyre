@@ -12,9 +12,9 @@ defmodule Pyre.ToolsTest do
     %{dir: tmp_dir}
   end
 
-  describe "for_role/2" do
+  describe "for_role/3" do
     test "programmer gets 4 tools", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       names = Enum.map(tools, & &1.name)
       assert length(tools) == 4
       assert "read_file" in names
@@ -24,18 +24,18 @@ defmodule Pyre.ToolsTest do
     end
 
     test "test_writer gets 4 tools", %{dir: dir} do
-      assert length(Tools.for_role(:test_writer, dir)) == 4
+      assert length(Tools.for_role(:test_writer, dir, allowed_paths: [dir])) == 4
     end
 
     test "qa_reviewer gets 3 tools (no write_file)", %{dir: dir} do
-      tools = Tools.for_role(:qa_reviewer, dir)
+      tools = Tools.for_role(:qa_reviewer, dir, allowed_paths: [dir])
       names = Enum.map(tools, & &1.name)
       assert length(tools) == 3
       refute "write_file" in names
     end
 
     test "designer gets 3 read-only tools", %{dir: dir} do
-      tools = Tools.for_role(:designer, dir)
+      tools = Tools.for_role(:designer, dir, allowed_paths: [dir])
       names = Enum.map(tools, & &1.name)
       assert length(tools) == 3
       assert "read_file" in names
@@ -45,7 +45,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "product_manager gets 3 read-only tools", %{dir: dir} do
-      tools = Tools.for_role(:product_manager, dir)
+      tools = Tools.for_role(:product_manager, dir, allowed_paths: [dir])
       names = Enum.map(tools, & &1.name)
       assert length(tools) == 3
       assert "read_file" in names
@@ -53,7 +53,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "shipper gets 3 read-only tools", %{dir: dir} do
-      tools = Tools.for_role(:shipper, dir)
+      tools = Tools.for_role(:shipper, dir, allowed_paths: [dir])
       names = Enum.map(tools, & &1.name)
       assert length(tools) == 3
       assert "read_file" in names
@@ -61,7 +61,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "software_architect gets 3 read-only tools", %{dir: dir} do
-      tools = Tools.for_role(:software_architect, dir)
+      tools = Tools.for_role(:software_architect, dir, allowed_paths: [dir])
       names = Enum.map(tools, & &1.name)
       assert length(tools) == 3
       assert "read_file" in names
@@ -71,7 +71,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "software_engineer gets 4 full tools", %{dir: dir} do
-      tools = Tools.for_role(:software_engineer, dir)
+      tools = Tools.for_role(:software_engineer, dir, allowed_paths: [dir])
       names = Enum.map(tools, & &1.name)
       assert length(tools) == 4
       assert "read_file" in names
@@ -79,29 +79,50 @@ defmodule Pyre.ToolsTest do
       assert "list_directory" in names
       assert "run_command" in names
     end
+
+    test "raises when allowed_paths not provided", %{dir: dir} do
+      assert_raise ArgumentError, ~r/No allowed paths configured/, fn ->
+        Tools.for_role(:programmer, dir)
+      end
+    end
+
+    test "raises when allowed_paths is empty", %{dir: dir} do
+      assert_raise ArgumentError, ~r/No allowed paths configured/, fn ->
+        Tools.for_role(:programmer, dir, allowed_paths: [])
+      end
+    end
   end
 
   describe "read_file" do
     test "reads an existing file", %{dir: dir} do
       File.write!(Path.join(dir, "hello.txt"), "world")
-      [read_tool | _] = Tools.for_role(:programmer, dir)
+      [read_tool | _] = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       assert {:ok, "world"} = ReqLLM.Tool.execute(read_tool, %{path: "hello.txt"})
     end
 
     test "returns error for missing file", %{dir: dir} do
-      [read_tool | _] = Tools.for_role(:programmer, dir)
+      [read_tool | _] = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       assert {:ok, "Error:" <> _} = ReqLLM.Tool.execute(read_tool, %{path: "nope.txt"})
     end
 
     test "blocks path traversal", %{dir: dir} do
-      [read_tool | _] = Tools.for_role(:programmer, dir)
+      [read_tool | _] = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       assert {:error, _} = ReqLLM.Tool.execute(read_tool, %{path: "../../etc/passwd"})
+    end
+
+    test "blocks access to working_dir when not in allowed_paths", %{dir: dir} do
+      other = Path.join(dir, "other")
+      File.mkdir_p!(other)
+      File.write!(Path.join(dir, "secret.txt"), "hidden")
+
+      [read_tool | _] = Tools.for_role(:programmer, dir, allowed_paths: [other])
+      assert {:error, _} = ReqLLM.Tool.execute(read_tool, %{path: "secret.txt"})
     end
   end
 
   describe "write_file" do
     test "writes a file and creates directories", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       write_tool = Enum.find(tools, &(&1.name == "write_file"))
 
       assert {:ok, "Written: lib/foo.ex"} =
@@ -111,7 +132,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "blocks path traversal", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       write_tool = Enum.find(tools, &(&1.name == "write_file"))
       assert {:error, _} = ReqLLM.Tool.execute(write_tool, %{path: "../evil.sh", content: "bad"})
     end
@@ -122,7 +143,7 @@ defmodule Pyre.ToolsTest do
       File.write!(Path.join(dir, "a.txt"), "")
       File.write!(Path.join(dir, "b.txt"), "")
 
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       list_tool = Enum.find(tools, &(&1.name == "list_directory"))
       assert {:ok, listing} = ReqLLM.Tool.execute(list_tool, %{path: "."})
       assert listing =~ "a.txt"
@@ -130,7 +151,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "returns error for missing directory", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       list_tool = Enum.find(tools, &(&1.name == "list_directory"))
       assert {:ok, "Error:" <> _} = ReqLLM.Tool.execute(list_tool, %{path: "nope"})
     end
@@ -138,26 +159,26 @@ defmodule Pyre.ToolsTest do
 
   describe "run_command" do
     test "runs an allowed command", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls"})
       assert is_binary(output)
     end
 
     test "rejects disallowed commands", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:error, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "rm -rf /"})
     end
 
     test "allows commands with env var prefixes", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:ok, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "MIX_ENV=test mix test"})
     end
 
     test "returns exit code on failure", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls nonexistent_dir_xyz"})
       assert output =~ "Exit code"
@@ -168,7 +189,7 @@ defmodule Pyre.ToolsTest do
       File.mkdir_p!(subdir)
       File.write!(Path.join(subdir, "marker.txt"), "")
 
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls", cwd: "subapp"})
       assert output =~ "marker.txt"
@@ -177,7 +198,7 @@ defmodule Pyre.ToolsTest do
     test "cwd defaults to working_dir when omitted", %{dir: dir} do
       File.write!(Path.join(dir, "root.txt"), "")
 
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:ok, output} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls"})
       assert output =~ "root.txt"
@@ -195,7 +216,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "cwd blocks path traversal", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
       assert {:error, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "ls", cwd: "../../"})
     end
@@ -203,7 +224,7 @@ defmodule Pyre.ToolsTest do
 
   describe "for_role/3 with options" do
     test "custom allowed_commands restricts run_command", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir, allowed_commands: ~w(echo))
+      tools = Tools.for_role(:programmer, dir, allowed_commands: ~w(echo), allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
 
       assert {:ok, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "echo hello"})
@@ -211,7 +232,7 @@ defmodule Pyre.ToolsTest do
     end
 
     test "custom allowed_commands works for qa_reviewer", %{dir: dir} do
-      tools = Tools.for_role(:qa_reviewer, dir, allowed_commands: ~w(echo))
+      tools = Tools.for_role(:qa_reviewer, dir, allowed_commands: ~w(echo), allowed_paths: [dir])
       cmd_tool = Enum.find(tools, &(&1.name == "run_command"))
 
       assert {:ok, _} = ReqLLM.Tool.execute(cmd_tool, %{command: "echo test"})
@@ -231,7 +252,7 @@ defmodule Pyre.ToolsTest do
 
   describe "list_directory path traversal" do
     test "blocks path traversal", %{dir: dir} do
-      tools = Tools.for_role(:programmer, dir)
+      tools = Tools.for_role(:programmer, dir, allowed_paths: [dir])
       list_tool = Enum.find(tools, &(&1.name == "list_directory"))
       assert {:error, _} = ReqLLM.Tool.execute(list_tool, %{path: "../../"})
     end

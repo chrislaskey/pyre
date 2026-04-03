@@ -21,8 +21,10 @@ defmodule Pyre.Tools do
   Tool definitions for LLM agent actions.
 
   Provides file system and shell tools that agents use to read, write,
-  and execute commands in the target project directory. Tools are sandboxed
-  to the working directory (and any additional allowed paths) via path validation.
+  and execute commands. Tools are sandboxed to explicitly configured
+  allowed paths via path validation. The working directory is used only
+  for resolving relative paths and as the default `cwd` for commands,
+  but does NOT grant file access unless it is included in `:allowed_paths`.
 
   ## Configuration
 
@@ -32,11 +34,14 @@ defmodule Pyre.Tools do
         allowed_commands: ~w(mix elixir ls grep git)
       )
 
-  Additional directories can be made accessible via `:allowed_paths`:
+  Accessible directories must be explicitly specified via `:allowed_paths`:
 
       Pyre.Tools.for_role(:programmer, "/path/to/project",
-        allowed_paths: ["/path/to/other/app"]
+        allowed_paths: ["/path/to/project", "/path/to/other/app"]
       )
+
+  Set the `PYRE_ALLOWED_PATHS` environment variable (comma-separated) to
+  configure allowed paths globally.
 
   Default allowed commands: #{inspect(@default_allowed_commands)}
   """
@@ -47,22 +52,31 @@ defmodule Pyre.Tools do
   def default_allowed_commands, do: @default_allowed_commands
 
   @doc """
-  Returns tools for a given agent role, scoped to the working directory.
+  Returns tools for a given agent role, scoped to the allowed paths.
+
+  The `working_dir` is used for resolving relative paths and as the default
+  `cwd` for shell commands, but does NOT automatically grant file access.
+  File access is restricted to the paths specified in `:allowed_paths`.
+
+  Raises `ArgumentError` if `:allowed_paths` is not provided or is empty.
 
   ## Options
 
     * `:allowed_commands` — List of command prefixes the `run_command` tool
       will accept. Defaults to `#{inspect(@default_allowed_commands)}`.
-    * `:allowed_paths` — Additional absolute directory paths that file tools
-      can read and write. Useful for monorepos where agents need access to
-      sibling apps.
+    * `:allowed_paths` — Absolute directory paths that file tools can read
+      and write. Required. Set via `PYRE_ALLOWED_PATHS` env var or pass
+      explicitly.
 
   ## Examples
 
-      Pyre.Tools.for_role(:programmer, "/path/to/project")
-      Pyre.Tools.for_role(:programmer, "/path/to/project", allowed_commands: ~w(mix elixir ls))
-      Pyre.Tools.for_role(:programmer, "/path/to/project", allowed_paths: ["/path/to/other/app"])
-      Pyre.Tools.for_role(:qa_reviewer, "/path/to/project")
+      Pyre.Tools.for_role(:programmer, "/path/to/project",
+        allowed_paths: ["/path/to/project"]
+      )
+      Pyre.Tools.for_role(:programmer, "/path/to/project",
+        allowed_paths: ["/path/to/project", "/path/to/other/app"],
+        allowed_commands: ~w(mix elixir ls)
+      )
   """
   def for_role(role, working_dir, opts \\ [])
 
@@ -80,62 +94,65 @@ defmodule Pyre.Tools do
 
   defp read_only_tools(working_dir, opts) do
     allowed = Keyword.get(opts, :allowed_commands, @default_allowed_commands)
-    base_paths = build_base_paths(working_dir, opts)
+    expanded_wd = Path.expand(working_dir)
+    allowed_paths = build_allowed_paths!(expanded_wd, opts)
 
     [
-      read_file_tool(base_paths),
-      list_directory_tool(base_paths),
-      run_command_tool(working_dir, allowed, base_paths)
+      read_file_tool(expanded_wd, allowed_paths),
+      list_directory_tool(expanded_wd, allowed_paths),
+      run_command_tool(expanded_wd, allowed, allowed_paths)
     ]
   end
 
   defp all_tools(working_dir, opts) do
     allowed = Keyword.get(opts, :allowed_commands, @default_allowed_commands)
-    base_paths = build_base_paths(working_dir, opts)
+    expanded_wd = Path.expand(working_dir)
+    allowed_paths = build_allowed_paths!(expanded_wd, opts)
 
     [
-      read_file_tool(base_paths),
-      write_file_tool(base_paths),
-      list_directory_tool(base_paths),
-      run_command_tool(working_dir, allowed, base_paths)
+      read_file_tool(expanded_wd, allowed_paths),
+      write_file_tool(expanded_wd, allowed_paths),
+      list_directory_tool(expanded_wd, allowed_paths),
+      run_command_tool(expanded_wd, allowed, allowed_paths)
     ]
   end
 
-  defp build_base_paths(working_dir, opts) do
-    extra = Keyword.get(opts, :allowed_paths, [])
-    expanded_wd = Path.expand(working_dir)
-    [expanded_wd | Enum.map(extra, &Path.expand(&1, expanded_wd))]
+  defp build_allowed_paths!(expanded_wd, opts) do
+    case Keyword.get(opts, :allowed_paths, []) do
+      [] ->
+        raise ArgumentError,
+              "No allowed paths configured. Set PYRE_ALLOWED_PATHS environment variable " <>
+                "or pass the :allowed_paths option to for_role/3."
+
+      paths ->
+        Enum.map(paths, &Path.expand(&1, expanded_wd))
+    end
   end
 
-  defp paths_description(base_paths) do
-    case base_paths do
-      [single] ->
-        "Project root: #{single}. Relative paths resolve from project root."
+  defp paths_description(working_dir, allowed_paths) do
+    dirs = Enum.join(allowed_paths, ", ")
 
-      [primary | extra] ->
-        dirs = Enum.join(extra, ", ")
-
-        "Project root: #{primary}. Additional accessible directories: #{dirs}. " <>
-          "Use absolute paths to access files outside the project root."
-    end
+    "Working directory: #{working_dir}. Accessible directories: #{dirs}. " <>
+      "Relative paths resolve from the working directory. " <>
+      "Use absolute paths to access files in accessible directories outside the working directory."
   end
 
   # --- Tool Definitions ---
 
-  defp read_file_tool(base_paths) do
+  defp read_file_tool(working_dir, allowed_paths) do
     ReqLLM.Tool.new!(
       name: "read_file",
       description:
-        "Read the contents of a file. Path can be absolute or relative to the project root. #{paths_description(base_paths)}",
+        "Read the contents of a file. Path can be absolute or relative to the working directory. #{paths_description(working_dir, allowed_paths)}",
       parameter_schema: [
         path: [
           type: :string,
           required: true,
-          doc: "File path (absolute or relative to project root)"
+          doc: "File path (absolute or relative to working directory)"
         ]
       ],
       callback: fn %{path: path} ->
-        full_path = resolve_path!(path, base_paths)
+        full_path = resolve_path!(path, working_dir, allowed_paths)
 
         case File.read(full_path) do
           {:ok, content} -> {:ok, content}
@@ -145,21 +162,21 @@ defmodule Pyre.Tools do
     )
   end
 
-  defp write_file_tool(base_paths) do
+  defp write_file_tool(working_dir, allowed_paths) do
     ReqLLM.Tool.new!(
       name: "write_file",
       description:
-        "Write content to a file. Path can be absolute or relative to the project root. Creates parent directories if needed. #{paths_description(base_paths)}",
+        "Write content to a file. Path can be absolute or relative to the working directory. Creates parent directories if needed. #{paths_description(working_dir, allowed_paths)}",
       parameter_schema: [
         path: [
           type: :string,
           required: true,
-          doc: "File path (absolute or relative to project root)"
+          doc: "File path (absolute or relative to working directory)"
         ],
         content: [type: :string, required: true, doc: "Complete file content to write"]
       ],
       callback: fn %{path: path, content: content} ->
-        full_path = resolve_path!(path, base_paths)
+        full_path = resolve_path!(path, working_dir, allowed_paths)
         File.mkdir_p!(Path.dirname(full_path))
 
         case File.write(full_path, content) do
@@ -170,16 +187,16 @@ defmodule Pyre.Tools do
     )
   end
 
-  defp list_directory_tool(base_paths) do
+  defp list_directory_tool(working_dir, allowed_paths) do
     ReqLLM.Tool.new!(
       name: "list_directory",
       description:
-        "List files and directories at the given path. Set recursive to true to list the full directory tree (directories shown with trailing /). #{paths_description(base_paths)}",
+        "List files and directories at the given path. Set recursive to true to list the full directory tree (directories shown with trailing /). #{paths_description(working_dir, allowed_paths)}",
       parameter_schema: [
         path: [
           type: :string,
           required: true,
-          doc: "Directory path (absolute or relative to project root)"
+          doc: "Directory path (absolute or relative to working directory)"
         ],
         recursive: [
           type: :boolean,
@@ -188,7 +205,7 @@ defmodule Pyre.Tools do
         ]
       ],
       callback: fn params ->
-        full_path = resolve_path!(params.path, base_paths)
+        full_path = resolve_path!(params.path, working_dir, allowed_paths)
         recursive? = Map.get(params, :recursive, false)
 
         if recursive? do
@@ -230,20 +247,20 @@ defmodule Pyre.Tools do
     end
   end
 
-  defp run_command_tool(working_dir, allowed_commands, base_paths) do
+  defp run_command_tool(working_dir, allowed_commands, allowed_paths) do
     ReqLLM.Tool.new!(
       name: "run_command",
       description:
-        "Run a shell command in the project directory. Allowed commands: #{Enum.join(allowed_commands, ", ")}. " <>
+        "Run a shell command in the working directory. Allowed commands: #{Enum.join(allowed_commands, ", ")}. " <>
           "Use the optional cwd parameter to run the command in a different directory (validated against allowed paths). " <>
-          "#{paths_description(base_paths)}",
+          "#{paths_description(working_dir, allowed_paths)}",
       parameter_schema: [
         command: [type: :string, required: true, doc: "Shell command to execute"],
         cwd: [
           type: :string,
           required: false,
           doc:
-            "Working directory for the command (absolute or relative to project root). Defaults to project root."
+            "Working directory for the command (absolute or relative to working directory). Defaults to working directory."
         ]
       ],
       callback: fn params ->
@@ -252,7 +269,7 @@ defmodule Pyre.Tools do
         cwd =
           case Map.get(params, :cwd) do
             nil -> working_dir
-            dir -> resolve_path!(dir, base_paths)
+            dir -> resolve_path!(dir, working_dir, allowed_paths)
           end
 
         {output, code} =
@@ -277,12 +294,12 @@ defmodule Pyre.Tools do
   # --- Safety ---
 
   @doc false
-  def resolve_path!(relative_path, base_paths) when is_list(base_paths) do
-    primary = hd(base_paths)
-    full_path = Path.expand(relative_path, primary)
+  def resolve_path!(relative_path, working_dir, allowed_paths)
+      when is_binary(working_dir) and is_list(allowed_paths) do
+    full_path = Path.expand(relative_path, working_dir)
 
     allowed? =
-      Enum.any?(base_paths, fn base ->
+      Enum.any?(allowed_paths, fn base ->
         expanded = Path.expand(base)
         full_path == expanded or String.starts_with?(full_path, expanded <> "/")
       end)
@@ -294,8 +311,12 @@ defmodule Pyre.Tools do
     full_path
   end
 
+  def resolve_path!(relative_path, base_paths) when is_list(base_paths) do
+    resolve_path!(relative_path, hd(base_paths), base_paths)
+  end
+
   def resolve_path!(relative_path, working_dir) when is_binary(working_dir) do
-    resolve_path!(relative_path, [working_dir])
+    resolve_path!(relative_path, working_dir, [working_dir])
   end
 
   defp validate_command!(command, allowed_commands) do
