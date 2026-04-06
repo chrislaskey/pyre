@@ -32,7 +32,7 @@ defmodule Pyre.Actions.GeneralistTest do
 
   test "returns error when LLM fails", %{run_dir: run_dir, tmp_dir: tmp_dir} do
     defmodule FailingLLM do
-      @behaviour Pyre.LLM
+      use Pyre.LLM
       def generate(_, _, _ \\ []), do: {:error, :api_error}
       def stream(_, _, _ \\ []), do: {:error, :api_error}
       def chat(_, _, _, _ \\ []), do: {:error, :api_error}

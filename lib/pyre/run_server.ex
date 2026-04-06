@@ -191,13 +191,7 @@ defmodule Pyre.RunServer do
 
     llm = Keyword.get(opts, :llm, Pyre.LLM.default())
 
-    backend =
-      cond do
-        llm == Pyre.LLM.ClaudeCLI -> :claude_cli
-        llm == Pyre.LLM.CursorCLI -> :cursor_cli
-        llm == Pyre.LLM.CodexCLI -> :codex_cli
-        true -> :other
-      end
+    backend = Pyre.Config.backend_name_for_module(llm)
 
     initial_phase = hd(workflow_stages(workflow))
 

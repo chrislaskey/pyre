@@ -60,7 +60,7 @@ defmodule Pyre.Flows.PrototypeTest do
 
   test "propagates error from a failing LLM", %{tmp_dir: tmp_dir} do
     defmodule FailingLLM do
-      @behaviour Pyre.LLM
+      use Pyre.LLM
       def generate(_, _, _ \\ []), do: {:error, :llm_failure}
       def stream(_, _, _ \\ []), do: {:error, :llm_failure}
       def chat(_, _, _, _ \\ []), do: {:error, :llm_failure}

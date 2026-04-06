@@ -178,9 +178,27 @@ in pyre_core. See the
 [PyreWeb README](https://github.com/chrislaskey/pyre_web?tab=readme-ov-file#github-app-pr-reviews)
 for setup instructions.
 
-#### LLM API Keys
+#### LLM Backends
 
-Pyre calls LLM APIs directly (no CLI dependency). Set at least one API keys:
+Pyre ships with several built-in LLM backends:
+
+| Backend | Name | Description |
+|---------|------|-------------|
+| `Pyre.LLM.ReqLLM` | `req_llm` | API-based (default) — any major provider via ReqLLM |
+| `Pyre.LLM.ClaudeCLI` | `claude_cli` | Claude CLI subprocess |
+| `Pyre.LLM.CursorCLI` | `cursor_cli` | Cursor CLI subprocess |
+| `Pyre.LLM.CodexCLI` | `codex_cli` | OpenAI Codex CLI subprocess |
+
+The default backend is `Pyre.LLM.ReqLLM`. To switch backends, set the
+`PYRE_LLM_BACKEND` environment variable to the backend's name:
+
+```bash
+export PYRE_LLM_BACKEND=claude_cli
+```
+
+##### API Keys
+
+When using the `req_llm` backend, set at least one API key:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -356,6 +374,67 @@ defmodule Pyre.Actions.SecurityReviewer do
   end
 end
 ```
+
+#### Custom LLM backends
+
+You can define your own LLM backend by implementing the `Pyre.LLM` behaviour.
+Use `use Pyre.LLM` to get the behaviour and a default `manages_tool_loop?/0`
+returning `false`:
+
+```elixir
+defmodule MyApp.LLM.Ollama do
+  use Pyre.LLM
+
+  @impl true
+  def generate(model, messages, opts \\ []) do
+    # Call your LLM provider
+    {:ok, "response text"}
+  end
+
+  @impl true
+  def stream(model, messages, opts \\ []) do
+    output_fn = Keyword.get(opts, :output_fn, &IO.write/1)
+    # Stream tokens via output_fn, return full text
+    {:ok, "response text"}
+  end
+
+  @impl true
+  def chat(model, messages, tools, opts \\ []) do
+    # Handle tool-use conversations
+    {:ok, "response text"}
+  end
+end
+```
+
+Then register it in your `Pyre.Config` module:
+
+```elixir
+defmodule MyApp.Pyre.Config do
+  use Pyre.Config
+
+  @impl true
+  def list_llm_backends do
+    Pyre.Config.included_llm_backends() ++ [
+      %{module: MyApp.LLM.Ollama, name: "ollama",
+        label: "Ollama", description: "Local models via Ollama"}
+    ]
+  end
+end
+```
+
+This makes your backend available via `PYRE_LLM_BACKEND=ollama` and visible
+in any UI that calls `Pyre.Config.list_llm_backends/0`.
+
+To set it as the default regardless of env vars, also override `get_llm_backend/1`:
+
+```elixir
+@impl true
+def get_llm_backend(_arg), do: MyApp.LLM.Ollama
+```
+
+For CLI-style backends that manage their own tool-calling loop (like Claude CLI
+or Codex CLI), override `manages_tool_loop?/0` to return `true`. This tells
+Pyre to call `chat/4` directly instead of routing through the agentic loop.
 
 ### Generators
 

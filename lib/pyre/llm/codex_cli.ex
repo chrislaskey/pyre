@@ -29,8 +29,9 @@ defmodule Pyre.LLM.CodexCLI do
       # Select as default backend via env var:
       PYRE_LLM_BACKEND=codex_cli
 
-      # Or in config:
-      config :pyre, :llm_backend, :codex_cli
+      # Or in your Pyre.Config module:
+      @impl true
+      def get_llm_backend(_arg), do: Pyre.LLM.CodexCLI
 
   ## Key Differences from ClaudeCLI
 
@@ -51,7 +52,7 @@ defmodule Pyre.LLM.CodexCLI do
   with an OpenAI API key, standard OpenAI per-token rates apply.
   """
 
-  @behaviour Pyre.LLM
+  use Pyre.LLM
 
   require Logger
 

@@ -6,7 +6,7 @@ defmodule Pyre.LLM.Mock do
   For sequenced responses, use `Process.put(:mock_llm_responses, ["r1", "r2", ...])`.
   """
 
-  @behaviour Pyre.LLM
+  use Pyre.LLM
 
   @impl true
   def generate(_model, _messages, _opts \\ []) do

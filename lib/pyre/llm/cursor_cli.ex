@@ -24,8 +24,9 @@ defmodule Pyre.LLM.CursorCLI do
       # Select as default backend via env var:
       PYRE_LLM_BACKEND=cursor_cli
 
-      # Or in config:
-      config :pyre, :llm_backend, :cursor_cli
+      # Or in your Pyre.Config module:
+      @impl true
+      def get_llm_backend(_arg), do: Pyre.LLM.CursorCLI
 
   ## Session Persistence (Option E — Hybrid Warm-Up)
 
@@ -58,7 +59,7 @@ defmodule Pyre.LLM.CursorCLI do
   CLI usage is included in the subscription at no per-token cost.
   """
 
-  @behaviour Pyre.LLM
+  use Pyre.LLM
 
   require Logger
 

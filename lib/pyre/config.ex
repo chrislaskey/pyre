@@ -1,6 +1,6 @@
 defmodule Pyre.Config do
   @moduledoc """
-  Behaviour and default configuration for Pyre lifecycle hooks.
+  Behaviour and default configuration for Pyre.
 
   Applications can provide a custom config module by:
 
@@ -25,12 +25,11 @@ defmodule Pyre.Config do
         end
 
         @impl true
-        def after_action_complete(%Pyre.Events.ActionCompleted{} = event) do
-          MyApp.Telemetry.emit(:action_complete, %{
-            stage: event.stage_name,
-            elapsed_ms: event.elapsed_ms
-          })
-          :ok
+        def list_llm_backends do
+          Pyre.Config.included_llm_backends() ++ [
+            %{module: MyApp.LLM.Ollama, name: "ollama",
+              label: "Ollama", description: "Local models via Ollama"}
+          ]
         end
       end
 
@@ -46,6 +45,15 @@ defmodule Pyre.Config do
 
   require Logger
 
+  # -- Types --
+
+  @type llm_backend_entry :: %{
+          module: module(),
+          name: String.t(),
+          label: String.t(),
+          description: String.t()
+        }
+
   # -- Callbacks --
 
   @callback after_flow_start(event :: Pyre.Events.FlowStarted.t()) :: :ok | {:error, term()}
@@ -58,6 +66,24 @@ defmodule Pyre.Config do
   @callback after_llm_call_complete(event :: Pyre.Events.LLMCallCompleted.t()) ::
               :ok | {:error, term()}
   @callback after_llm_call_error(event :: Pyre.Events.LLMCallError.t()) :: :ok | {:error, term()}
+
+  @doc """
+  Returns the list of available LLM backends.
+
+  Each entry is a map with `:module`, `:name`, `:label`, and `:description`.
+  The default implementation delegates to `included_llm_backends/0`.
+  """
+  @callback list_llm_backends() :: [llm_backend_entry()]
+
+  @doc """
+  Returns the LLM backend module for the given argument.
+
+  The meaning of `arg` is defined by the implementing Config module.
+  The default implementation ignores `arg` and selects based on the
+  `PYRE_LLM_BACKEND` environment variable, falling back to the first
+  entry from `list_llm_backends/0`.
+  """
+  @callback get_llm_backend(arg :: any()) :: module()
 
   # -- Public API --
 
@@ -91,6 +117,188 @@ defmodule Pyre.Config do
     :ok
   end
 
+  @doc """
+  Returns all available LLM backends from the configured config module.
+  """
+  @spec list_llm_backends() :: [llm_backend_entry()]
+  def list_llm_backends do
+    mod = get_module()
+
+    if mod == __MODULE__ do
+      included_llm_backends()
+    else
+      mod.list_llm_backends()
+    end
+  end
+
+  @doc """
+  Returns the LLM backend module for the given argument.
+
+  The meaning of `arg` is defined by the Config module implementation.
+  The default implementation handles two cases:
+
+  - `nil` — selects based on the `PYRE_LLM_BACKEND` environment variable,
+    falling back to the first entry from `list_llm_backends/0`
+  - a binary name (e.g. `"claude_cli"`) — looks up by `name` in
+    `list_llm_backends/0` and returns the module, falling back to the
+    default when no match is found
+
+  ## Examples
+
+      Pyre.Config.get_llm_backend()            # env var or first backend
+      Pyre.Config.get_llm_backend("claude_cli") # => Pyre.LLM.ClaudeCLI
+      Pyre.Config.get_llm_backend("unknown")    # falls back to default
+  """
+  @spec get_llm_backend(any()) :: module()
+  def get_llm_backend(arg \\ nil) do
+    mod = get_module()
+
+    if mod == __MODULE__ do
+      default_get_llm_backend(arg)
+    else
+      mod.get_llm_backend(arg)
+    end
+  end
+
+  # -- Helpers (public, for use in custom Config implementations) --
+
+  @doc """
+  Returns the list of LLM backends included with Pyre.
+
+  This is the canonical source for the built-in backend list. The default
+  implementations of `list_llm_backends/0` delegate to this function.
+
+  Custom Config modules can reference it to extend rather than replace
+  the built-in list:
+
+      @impl true
+      def list_llm_backends do
+        Pyre.Config.included_llm_backends() ++ [
+          %{module: MyApp.LLM.Ollama, name: "ollama",
+            label: "Ollama", description: "Local models"}
+        ]
+      end
+  """
+  @spec included_llm_backends() :: [llm_backend_entry()]
+  def included_llm_backends do
+    [
+      %{
+        module: Pyre.LLM.ReqLLM,
+        name: "req_llm",
+        label: "API (ReqLLM)",
+        description: "Any major provider"
+      },
+      %{
+        module: Pyre.LLM.ClaudeCLI,
+        name: "claude_cli",
+        label: "Claude CLI",
+        description: "From Anthropic"
+      },
+      %{
+        module: Pyre.LLM.CursorCLI,
+        name: "cursor_cli",
+        label: "Cursor CLI",
+        description: "From Cursor"
+      },
+      %{
+        module: Pyre.LLM.CodexCLI,
+        name: "codex_cli",
+        label: "Codex CLI",
+        description: "From OpenAI"
+      }
+    ]
+  end
+
+  @doc """
+  Finds the backend entry with the given `name` in a list of backends.
+
+  Returns `{:ok, entry}` if found, `:error` otherwise.
+
+      iex> backends = Pyre.Config.included_llm_backends()
+      iex> {:ok, entry} = Pyre.Config.find_backend_by_name(backends, "claude_cli")
+      iex> entry.module
+      Pyre.LLM.ClaudeCLI
+  """
+  @spec find_backend_by_name([llm_backend_entry()], String.t()) ::
+          {:ok, llm_backend_entry()} | :error
+  def find_backend_by_name(backends, name) when is_binary(name) do
+    case Enum.find(backends, fn b -> b.name == name end) do
+      nil -> :error
+      entry -> {:ok, entry}
+    end
+  end
+
+  @doc """
+  Returns the backend name for the given module, or `"other"` if not found.
+
+  Looks up the module in the current `list_llm_backends/0` and returns its
+  `name` field. Useful for converting a module reference back to a backend
+  identifier string.
+
+      Pyre.Config.backend_name_for_module(Pyre.LLM.ClaudeCLI)
+      # => "claude_cli"
+  """
+  @spec backend_name_for_module(module()) :: String.t()
+  def backend_name_for_module(mod) do
+    backends = list_llm_backends()
+
+    case Enum.find(backends, fn b -> b.module == mod end) do
+      %{name: name} -> name
+      nil -> "other"
+    end
+  end
+
+  @doc """
+  Resolves the default backend module from a list of backend entries.
+
+  Checks the `PYRE_LLM_BACKEND` environment variable and matches it
+  against the `name` field. Falls back to the first entry in the list.
+
+  Custom Config modules can reuse this in their `get_llm_backend/1`:
+
+      @impl true
+      def get_llm_backend(_arg) do
+        Pyre.Config.resolve_llm_backend(list_llm_backends())
+      end
+  """
+  @spec resolve_llm_backend([llm_backend_entry()]) :: module()
+  def resolve_llm_backend(backends) do
+    case System.get_env("PYRE_LLM_BACKEND") do
+      nil ->
+        first_backend_module(backends)
+
+      env_value ->
+        case Enum.find(backends, fn b -> b.name == env_value end) do
+          %{module: mod} -> mod
+          nil -> first_backend_module(backends)
+        end
+    end
+  end
+
+  defp default_get_llm_backend(nil) do
+    resolve_llm_backend(included_llm_backends())
+  end
+
+  defp default_get_llm_backend(name) when is_binary(name) do
+    backends = included_llm_backends()
+
+    case find_backend_by_name(backends, name) do
+      {:ok, %{module: mod}} -> mod
+      :error -> resolve_llm_backend(backends)
+    end
+  end
+
+  defp default_get_llm_backend(_other) do
+    resolve_llm_backend(included_llm_backends())
+  end
+
+  defp first_backend_module(backends) do
+    case backends do
+      [%{module: mod} | _] -> mod
+      _ -> Pyre.LLM.ReqLLM
+    end
+  end
+
   # -- __using__ macro --
 
   defmacro __using__(_opts) do
@@ -114,6 +322,25 @@ defmodule Pyre.Config do
       @impl Pyre.Config
       def after_llm_call_error(_event), do: :ok
 
+      @impl Pyre.Config
+      def list_llm_backends, do: Pyre.Config.included_llm_backends()
+
+      @impl Pyre.Config
+      def get_llm_backend(nil) do
+        Pyre.Config.resolve_llm_backend(list_llm_backends())
+      end
+
+      def get_llm_backend(name) when is_binary(name) do
+        case Pyre.Config.find_backend_by_name(list_llm_backends(), name) do
+          {:ok, %{module: mod}} -> mod
+          :error -> Pyre.Config.resolve_llm_backend(list_llm_backends())
+        end
+      end
+
+      def get_llm_backend(_arg) do
+        Pyre.Config.resolve_llm_backend(list_llm_backends())
+      end
+
       defoverridable after_flow_start: 1,
                      after_flow_complete: 1,
                      after_flow_error: 1,
@@ -121,7 +348,9 @@ defmodule Pyre.Config do
                      after_action_complete: 1,
                      after_action_error: 1,
                      after_llm_call_complete: 1,
-                     after_llm_call_error: 1
+                     after_llm_call_error: 1,
+                     list_llm_backends: 0,
+                     get_llm_backend: 1
     end
   end
 

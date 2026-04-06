@@ -53,7 +53,7 @@ defmodule Pyre.Tools.AgenticLoopTest do
   # A mock LLM module that returns pre-configured responses from the process dictionary.
   # Similar to Pyre.LLM.Mock but returns pre-built ReqLLM.Response structs for chat/4.
   defmodule MockLLM do
-    @behaviour Pyre.LLM
+    use Pyre.LLM
 
     @impl true
     def generate(_model, _messages, _opts \\ []), do: {:ok, "mock"}

@@ -96,7 +96,7 @@ defmodule Pyre.Actions.Helpers do
   end
 
   defp manages_tool_loop?(llm) do
-    function_exported?(llm, :manages_tool_loop?, 0) and llm.manages_tool_loop?()
+    llm.manages_tool_loop?()
   end
 
   defp cli_opts(context) do

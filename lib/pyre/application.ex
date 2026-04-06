@@ -4,6 +4,8 @@ defmodule Pyre.Application do
 
   @impl true
   def start(_type, _args) do
+    Pyre.LLM.validate_backend!()
+
     children = [
       {Registry, keys: :unique, name: Pyre.RunRegistry},
       {DynamicSupervisor, name: Pyre.RunSupervisor, strategy: :one_for_one},

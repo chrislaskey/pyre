@@ -18,8 +18,9 @@ defmodule Pyre.LLM.ClaudeCLI do
       # Select as default backend via env var:
       PYRE_LLM_BACKEND=claude_cli
 
-      # Or in config:
-      config :pyre, :llm_backend, :claude_cli
+      # Or in your Pyre.Config module:
+      @impl true
+      def get_llm_backend(_arg), do: Pyre.LLM.ClaudeCLI
 
   ## Cost
 
@@ -28,7 +29,7 @@ defmodule Pyre.LLM.ClaudeCLI do
   `ANTHROPIC_API_KEY`, costs are identical to direct API calls.
   """
 
-  @behaviour Pyre.LLM
+  use Pyre.LLM
 
   require Logger
 

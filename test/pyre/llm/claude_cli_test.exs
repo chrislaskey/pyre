@@ -184,7 +184,7 @@ defmodule Pyre.LLM.ClaudeCLITest do
       # Define an inline module that acts like ClaudeCLI (manages_tool_loop? = true)
       # but returns a canned response instead of spawning a subprocess
       defmodule MockCLIBackend do
-        @behaviour Pyre.LLM
+        use Pyre.LLM
 
         @impl true
         def manages_tool_loop?, do: true

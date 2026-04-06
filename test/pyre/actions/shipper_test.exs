@@ -91,7 +91,7 @@ defmodule Pyre.Actions.ShipperTest do
   describe "run/2 returns error on LLM failure" do
     test "propagates LLM error", %{run_dir: run_dir, tmp_dir: tmp_dir} do
       defmodule FailingShipperLLM do
-        @behaviour Pyre.LLM
+        use Pyre.LLM
         def generate(_, _, _ \\ []), do: {:error, :api_error}
         def stream(_, _, _ \\ []), do: {:error, :api_error}
         def chat(_, _, _, _ \\ []), do: {:error, :api_error}
@@ -145,7 +145,7 @@ defmodule Pyre.Actions.ShipperTest do
       tmp_dir: tmp_dir
     } do
       defmodule CLIShipperBackend do
-        @behaviour Pyre.LLM
+        use Pyre.LLM
 
         def manages_tool_loop?, do: true
 

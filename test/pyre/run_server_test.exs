@@ -2,7 +2,7 @@ defmodule Pyre.RunServerTest do
   use ExUnit.Case, async: false
 
   defmodule AgentMock do
-    @behaviour Pyre.LLM
+    use Pyre.LLM
 
     @agent_name __MODULE__.Responses
 

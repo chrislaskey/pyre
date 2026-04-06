@@ -11,7 +11,7 @@ defmodule Pyre.LLM.ReqLLM do
     the full response (tool_calls, finish_reason, updated context).
   """
 
-  @behaviour Pyre.LLM
+  use Pyre.LLM
 
   @impl true
   def generate(model, messages, opts \\ []) do
