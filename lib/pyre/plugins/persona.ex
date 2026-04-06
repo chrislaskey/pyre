@@ -130,6 +130,7 @@ defmodule Pyre.Plugins.Persona do
         #{allowed_lines}
 
         ### Rules
+        - The prompt will refer to changes to be made in the project directory or one of the allowed directories above.
         - Only create, edit, move, or delete files inside the allowed directories above.
         - Do not modify files outside allowed directories. If a requested change requires that, explain the limitation and stop.
         """
