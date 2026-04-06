@@ -67,7 +67,9 @@ defmodule Pyre.Plugins.Persona do
     text_attachments = Enum.filter(attachments, &Artifact.text_attachment?/1)
     image_attachments = Enum.filter(attachments, &Artifact.image_attachment?/1)
 
-    sections = ["## Feature Request\n\n#{feature_description}"]
+    sections = workspace_section()
+
+    sections = sections ++ ["## Feature Request\n\n#{feature_description}"]
 
     sections =
       if text_attachments != [] do
@@ -110,6 +112,39 @@ defmodule Pyre.Plugins.Persona do
 
       %{role: :user, content: [ContentPart.text(text_body) | image_parts]}
     end
+  end
+
+  defp workspace_section do
+    with allowed_paths when is_list(allowed_paths) <- Application.get_env(:pyre, :allowed_paths),
+         normalized_paths when normalized_paths != [] <-
+           normalize_allowed_paths(allowed_paths) do
+      allowed_lines =
+        normalized_paths
+        |> Enum.map(&"  - `#{&1}`")
+        |> Enum.join("\n")
+
+      [
+        """
+        ## Workspace Constraints
+        - Allowed directories for file modifications:
+        #{allowed_lines}
+
+        ### Rules
+        - Only create, edit, move, or delete files inside the allowed directories above.
+        - Do not modify files outside allowed directories. If a requested change requires that, explain the limitation and stop.
+        """
+        |> String.trim()
+      ]
+    else
+      _ -> []
+    end
+  end
+
+  defp normalize_allowed_paths(allowed_paths) do
+    allowed_paths
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&Path.expand/1)
+    |> Enum.uniq()
   end
 
   defp project_personas_dir do
