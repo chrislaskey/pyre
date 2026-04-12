@@ -54,6 +54,15 @@ defmodule Pyre.Config do
           description: String.t()
         }
 
+  @type workflow_entry :: %{
+          name: atom(),
+          module: module(),
+          label: String.t(),
+          description: String.t(),
+          mode: :interactive | :background,
+          stages: [{atom(), String.t()}]
+        }
+
   # -- Callbacks --
 
   @callback after_flow_start(event :: Pyre.Events.FlowStarted.t()) :: :ok | {:error, term()}
@@ -84,6 +93,15 @@ defmodule Pyre.Config do
   entry from `list_llm_backends/0`.
   """
   @callback get_llm_backend(arg :: any()) :: module()
+
+  @doc """
+  Returns the list of available workflows.
+
+  Each entry is a map with `:name`, `:module`, `:label`, `:description`,
+  `:mode`, and `:stages`. The default implementation delegates to
+  `included_workflows/0`.
+  """
+  @callback list_workflows() :: [workflow_entry()]
 
   # -- Public API --
 
@@ -160,6 +178,37 @@ defmodule Pyre.Config do
     end
   end
 
+  @doc """
+  Returns all available workflows from the configured config module.
+  """
+  @spec list_workflows() :: [workflow_entry()]
+  def list_workflows do
+    mod = get_module()
+
+    if mod == __MODULE__ do
+      included_workflows()
+    else
+      mod.list_workflows()
+    end
+  end
+
+  @doc """
+  Returns the workflow entry for the given name atom.
+
+  Returns `{:ok, entry}` if found, `:error` otherwise.
+
+      iex> {:ok, entry} = Pyre.Config.get_workflow(:chat)
+      iex> entry.module
+      Pyre.Flows.Chat
+  """
+  @spec get_workflow(atom()) :: {:ok, workflow_entry()} | :error
+  def get_workflow(name) when is_atom(name) do
+    case Enum.find(list_workflows(), fn w -> w.name == name end) do
+      nil -> :error
+      entry -> {:ok, entry}
+    end
+  end
+
   # -- Helpers (public, for use in custom Config implementations) --
 
   @doc """
@@ -205,6 +254,89 @@ defmodule Pyre.Config do
         name: "codex_cli",
         label: "Codex CLI",
         description: "From OpenAI"
+      }
+    ]
+  end
+
+  @doc """
+  Returns the list of workflows included with Pyre.
+
+  This is the canonical source for the built-in workflow list. The default
+  implementations of `list_workflows/0` delegate to this function.
+
+  Custom Config modules can reference it to extend rather than replace
+  the built-in list:
+
+      @impl true
+      def list_workflows do
+        Pyre.Config.included_workflows() ++ [
+          %{name: :my_flow, module: MyApp.Flows.Custom, label: "Custom",
+            description: "My custom flow", mode: :background,
+            stages: [{:doing, "Worker"}]}
+        ]
+      end
+  """
+  @spec included_workflows() :: [workflow_entry()]
+  def included_workflows do
+    [
+      %{
+        name: :chat,
+        module: Pyre.Flows.Chat,
+        label: "Chat",
+        description: "Build anything interactively",
+        mode: :interactive,
+        stages: [{:generalist, "Generalist"}]
+      },
+      %{
+        name: :prototype,
+        module: Pyre.Flows.Prototype,
+        label: "Prototype",
+        description: "Visual prototype",
+        mode: :interactive,
+        stages: [{:prototyping, "Prototype Engineer"}]
+      },
+      %{
+        name: :feature,
+        module: Pyre.Flows.Feature,
+        label: "Feature",
+        description: "Architect, PR, and engineer",
+        mode: :interactive,
+        stages: [
+          {:architecting, "Software Architect"},
+          {:pr_setup, "PR Setup"},
+          {:engineering, "Software Engineer"}
+        ]
+      },
+      %{
+        name: :overnight_feature,
+        module: Pyre.Flows.OvernightFeature,
+        label: "Overnight Feature",
+        description: "Full pipeline, plan to ship",
+        mode: :background,
+        stages: [
+          {:planning, "Product Manager"},
+          {:designing, "Designer"},
+          {:implementing, "Programmer"},
+          {:testing, "Test Writer"},
+          {:reviewing, "QA Reviewer"},
+          {:shipping, "Shipper"}
+        ]
+      },
+      %{
+        name: :task,
+        module: Pyre.Flows.Task,
+        label: "Task",
+        description: "Single-step generalist task",
+        mode: :background,
+        stages: [{:tasking, "Generalist"}]
+      },
+      %{
+        name: :code_review,
+        module: Pyre.Flows.CodeReview,
+        label: "Code Review",
+        description: "Review existing code",
+        mode: :background,
+        stages: [{:reviewing, "PR Reviewer"}]
       }
     ]
   end
@@ -326,6 +458,9 @@ defmodule Pyre.Config do
       def list_llm_backends, do: Pyre.Config.included_llm_backends()
 
       @impl Pyre.Config
+      def list_workflows, do: Pyre.Config.included_workflows()
+
+      @impl Pyre.Config
       def get_llm_backend(nil) do
         Pyre.Config.resolve_llm_backend(list_llm_backends())
       end
@@ -350,7 +485,8 @@ defmodule Pyre.Config do
                      after_llm_call_complete: 1,
                      after_llm_call_error: 1,
                      list_llm_backends: 0,
-                     get_llm_backend: 1
+                     get_llm_backend: 1,
+                     list_workflows: 0
     end
   end
 

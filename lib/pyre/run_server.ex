@@ -510,35 +510,14 @@ defmodule Pyre.RunServer do
     end
   end
 
-  defp flow_module(:chat), do: Pyre.Flows.Chat
-  defp flow_module(:feature), do: Pyre.Flows.Feature
-  defp flow_module(:prototype), do: Pyre.Flows.Prototype
-  defp flow_module(:task), do: Pyre.Flows.Task
-  defp flow_module(:code_review), do: Pyre.Flows.CodeReview
-  defp flow_module(:overnight_feature), do: Pyre.Flows.OvernightFeature
-
-  defp workflow_stages(:chat) do
-    [:generalist]
+  defp flow_module(workflow) do
+    {:ok, entry} = Pyre.Config.get_workflow(workflow)
+    entry.module
   end
 
-  defp workflow_stages(:feature) do
-    [:architecting, :pr_setup, :engineering]
-  end
-
-  defp workflow_stages(:prototype) do
-    [:prototyping]
-  end
-
-  defp workflow_stages(:task) do
-    [:tasking]
-  end
-
-  defp workflow_stages(:code_review) do
-    [:reviewing]
-  end
-
-  defp workflow_stages(:overnight_feature) do
-    [:planning, :designing, :implementing, :testing, :reviewing, :shipping]
+  defp workflow_stages(workflow) do
+    {:ok, entry} = Pyre.Config.get_workflow(workflow)
+    Enum.map(entry.stages, fn {stage, _label} -> stage end)
   end
 
   defp update_registry_meta(state) do

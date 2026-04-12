@@ -89,8 +89,16 @@ defmodule Pyre.ConfigTest do
       assert function_exported?(TrackingConfig, :get_llm_backend, 1)
     end
 
+    test "provides default list_workflows" do
+      assert function_exported?(TrackingConfig, :list_workflows, 0)
+    end
+
     test "default list_llm_backends delegates to included_llm_backends" do
       assert TrackingConfig.list_llm_backends() == Config.included_llm_backends()
+    end
+
+    test "default list_workflows delegates to included_workflows" do
+      assert TrackingConfig.list_workflows() == Config.included_workflows()
     end
   end
 
@@ -206,6 +214,85 @@ defmodule Pyre.ConfigTest do
 
     test "returns 'other' for unknown module" do
       assert Config.backend_name_for_module(SomeUnknownModule) == "other"
+    end
+  end
+
+  describe "included_workflows/0" do
+    test "returns list of workflow entries with required fields" do
+      workflows = Config.included_workflows()
+      assert is_list(workflows)
+      assert length(workflows) > 0
+
+      for entry <- workflows do
+        assert is_atom(entry.name)
+        assert is_atom(entry.module)
+        assert is_binary(entry.label)
+        assert is_binary(entry.description)
+        assert entry.mode in [:interactive, :background]
+        assert is_list(entry.stages)
+
+        for {stage_name, stage_label} <- entry.stages do
+          assert is_atom(stage_name)
+          assert is_binary(stage_label)
+        end
+      end
+    end
+
+    test "includes the built-in workflows" do
+      names = Config.included_workflows() |> Enum.map(& &1.name)
+      assert :chat in names
+      assert :prototype in names
+      assert :feature in names
+      assert :overnight_feature in names
+      assert :task in names
+      assert :code_review in names
+    end
+  end
+
+  describe "list_workflows/0" do
+    test "returns included workflows when no custom config is set" do
+      Application.delete_env(:pyre, :config)
+      assert Config.list_workflows() == Config.included_workflows()
+    end
+
+    test "delegates to custom config module when set" do
+      Application.put_env(:pyre, :config, TrackingConfig)
+      assert Config.list_workflows() == Config.included_workflows()
+    end
+  end
+
+  describe "get_workflow/1" do
+    test "returns workflow entry for known name" do
+      assert {:ok, %{module: Pyre.Flows.Chat, name: :chat}} = Config.get_workflow(:chat)
+      assert {:ok, %{module: Pyre.Flows.Feature, name: :feature}} = Config.get_workflow(:feature)
+
+      assert {:ok, %{module: Pyre.Flows.OvernightFeature}} =
+               Config.get_workflow(:overnight_feature)
+    end
+
+    test "returns :error for unknown name" do
+      assert :error = Config.get_workflow(:nonexistent)
+    end
+
+    test "workflow entry contains stages as {atom, string} tuples" do
+      {:ok, entry} = Config.get_workflow(:overnight_feature)
+
+      assert entry.stages == [
+               {:planning, "Product Manager"},
+               {:designing, "Designer"},
+               {:implementing, "Programmer"},
+               {:testing, "Test Writer"},
+               {:reviewing, "QA Reviewer"},
+               {:shipping, "Shipper"}
+             ]
+    end
+
+    test "workflow entry contains mode" do
+      {:ok, chat} = Config.get_workflow(:chat)
+      assert chat.mode == :interactive
+
+      {:ok, task} = Config.get_workflow(:task)
+      assert task.mode == :background
     end
   end
 
